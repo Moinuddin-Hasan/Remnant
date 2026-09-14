@@ -11,10 +11,10 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
 
   return (
-    <main className="wrap">
-      <p className="eyebrow">Remnant</p>
+    <main className="container page">
+      <p className="t-label">Remnant</p>
       <h1>Shared with you</h1>
-      <p className="sub">
+      <p className="lede">
         Encrypted before it was uploaded. The key is in the link, not on the server.
       </p>
       <ClaimGate id={id} />

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Engine from "./Engine";
 import ForgeEngine from "../forge/ForgeEngine";
+import Tabs from "../Tabs";
 
 export type Mode = "inspect" | "forge";
 
@@ -30,18 +31,7 @@ export default function Workspace({ initial = "inspect" }: { initial?: Mode }) {
 
   return (
     <>
-      <div className="tabs">
-        <button
-          className="tab"
-          data-active={mode === "inspect"}
-          onClick={() => setMode("inspect")}
-        >
-          Inspect &amp; clean
-        </button>
-        <button className="tab" data-active={mode === "forge"} onClick={() => setMode("forge")}>
-          Forge
-        </button>
-      </div>
+      <Tabs active={mode} onSwitch={setMode} />
 
       {mode === "inspect" ? (
         <Engine

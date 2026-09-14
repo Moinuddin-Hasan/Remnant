@@ -7,9 +7,9 @@ const ORDER = ["location", "identity", "device", "remnant", "time", "history", "
 export default function FindingList({ report }: { report: Report }) {
   if (report.findings.length === 0) {
     return (
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Nothing found</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Nothing found</h2>
           <span className="meta">{report.formatLabel}</span>
         </div>
         <p className="note" style={{ marginTop: 0 }}>
@@ -26,9 +26,9 @@ export default function FindingList({ report }: { report: Report }) {
   const critical = report.findings.filter((f) => f.severity === "critical").length;
 
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <h2>What this file discloses</h2>
+    <div className="card">
+      <div className="card-head">
+        <h2 className="t-headline-md">What this file discloses</h2>
         <span className="meta">
           {report.findings.length} findings · {critical} critical · Tier {report.tier}
         </span>

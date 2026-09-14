@@ -24,9 +24,9 @@ export default function RemnantReveal({ previews }: { previews: readonly Preview
   if (previews.length === 0) return null;
 
   return (
-    <div className="panel remnant">
-      <div className="panel-title">
-        <h2>Hidden inside this file</h2>
+    <div className="card card-leak">
+      <div className="card-head">
+        <h2 className="t-headline-md">Hidden inside this file</h2>
         <span className="meta">
           {previews.length} item{previews.length === 1 ? "" : "s"}
         </span>

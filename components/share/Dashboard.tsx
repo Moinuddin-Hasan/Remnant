@@ -151,9 +151,9 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Share a file</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Share a file</h2>
           <span className="meta">
             {config ? (config.mode === "hosted" ? "hosted storage" : "local storage") : "…"}
           </span>
@@ -186,8 +186,8 @@ export default function Dashboard() {
           Strip metadata before encrypting
         </label>
 
-        <div className="layers" style={{ marginBottom: 14 }}>
-          <label className="layer">
+        <div className="grid" style={{ marginBottom: 14 }}>
+          <label className="well field">
             <h3>Claims</h3>
             <input
               type="number"
@@ -199,7 +199,7 @@ export default function Dashboard() {
             />
             <p>How many times the link can be opened.</p>
           </label>
-          <label className="layer">
+          <label className="well field">
             <h3>Expires in (min)</h3>
             <input
               type="number"
@@ -212,7 +212,7 @@ export default function Dashboard() {
             <p>After this it is unreachable.</p>
           </label>
           {config?.passphraseRequired && (
-            <label className="layer">
+            <label className="well field">
               <h3>Passphrase</h3>
               <input
                 type="password"
@@ -228,7 +228,7 @@ export default function Dashboard() {
         {error && <p className="err">{error}</p>}
 
         <div className="actions">
-          <button className="primary" onClick={onCreate} disabled={!file || busy}>
+          <button className="btn btn-primary" onClick={onCreate} disabled={!file || busy}>
             {busy ? `Encrypting… ${Math.round(progress * 100)}%` : "Encrypt and upload"}
           </button>
         </div>
@@ -240,9 +240,9 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Storage</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Storage</h2>
           <span className="meta">
             {usage
               ? `${(usage.bytes / 1048576).toFixed(1)} of ${(usage.quota / 1048576).toFixed(0)} MB · ${usage.count} object(s)`
@@ -273,16 +273,16 @@ export default function Dashboard() {
           Sweeping deletes them and confirms afterwards that the objects are actually gone.
         </p>
         <div className="actions">
-          <button onClick={onSweep} disabled={sweeping}>
+          <button className="btn" onClick={onSweep} disabled={sweeping}>
             {sweeping ? "Sweeping…" : "Reclaim orphaned files"}
           </button>
           {swept && <span className="meta">{swept}</span>}
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Your links</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Your links</h2>
           <span className="meta">{shares.length} on this device</span>
         </div>
 
@@ -310,9 +310,9 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: "flex", gap: 8, flex: "none" }}>
                   {!dead && (
-                    <button onClick={() => onCopy(s)}>{copied === s.id ? "Copied" : "Copy link"}</button>
+                    <button className="btn" onClick={() => onCopy(s)}>{copied === s.id ? "Copied" : "Copy link"}</button>
                   )}
-                  <button onClick={() => onRevoke(s)}>{dead ? "Remove" : "Revoke"}</button>
+                  <button className="btn" onClick={() => onRevoke(s)}>{dead ? "Remove" : "Revoke"}</button>
                 </div>
               </div>
             );

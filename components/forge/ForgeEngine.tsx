@@ -98,7 +98,7 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
   }, [file, profile]);
 
   const field = (label: string, key: keyof SpoofProfile, placeholder = "") => (
-    <label className="layer" key={key}>
+    <label className="well field" key={key}>
       <h3>{label}</h3>
       <input
         type="text"
@@ -119,9 +119,9 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
 
   return (
     <>
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Source file</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Source file</h2>
           <span className="meta">JPEG</span>
         </div>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -138,21 +138,21 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
         </p>
       </div>
 
-      <div className="panel">
-        <div className="panel-title">
-          <h2>Identity to write</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">Identity to write</h2>
           <span className="meta">{PRESETS.length} presets</span>
         </div>
         <div className="actions" style={{ marginTop: 0, marginBottom: 14 }}>
           {PRESETS.map((p) => (
-            <button key={p.label} onClick={() => setProfile(p.profile)}>
+            <button className="btn" key={p.label} onClick={() => setProfile(p.profile)}>
               {p.label}
             </button>
           ))}
-          <button onClick={() => setProfile(empty)}>Clear</button>
+          <button className="btn" onClick={() => setProfile(empty)}>Clear</button>
         </div>
 
-        <div className="layers">
+        <div className="grid">
           {field("Make", "make", "Apple")}
           {field("Model", "model", "iPhone 15 Pro")}
           {field("Software", "software", "17.4.1")}
@@ -166,16 +166,16 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
         {error && <p className="err">{error}</p>}
 
         <div className="actions">
-          <button className="primary" onClick={onForge} disabled={!file || busy}>
+          <button className="btn btn-primary" onClick={onForge} disabled={!file || busy}>
             {busy ? "Writing…" : "Write metadata"}
           </button>
           {result && (
             <>
               <a href={result.url} download={result.name}>
-                <button>Download</button>
+                <button className="btn">Download</button>
               </a>
               {onHandOff && (
-                <button
+                <button className="btn"
                   onClick={() => {
                     if (!forged.current) return;
                     onHandOff(
@@ -194,9 +194,9 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
 
       {result && (
         <>
-          <div className="panel">
-            <div className="panel-title">
-              <h2>Read back from the file we produced</h2>
+          <div className="card">
+            <div className="card-head">
+              <h2 className="t-headline-md">Read back from the file we produced</h2>
               <span className="meta">not the values you typed</span>
             </div>
             {result.report.findings
@@ -212,9 +212,9 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
               ))}
           </div>
 
-          <div className={`panel ${result.lint.contradictions.length > 1 ? "verify-bad" : "verify-ok"}`}>
-            <div className="panel-title">
-              <h2>Consistency: {result.lint.score}/100</h2>
+          <div className={`card ${result.lint.contradictions.length > 1 ? "card-warn" : "card-ok"}`}>
+            <div className="card-head">
+              <h2 className="t-headline-md">Consistency: {result.lint.score}/100</h2>
               <span className="meta">checked against {result.lint.checkedModels} known models</span>
             </div>
 
@@ -235,7 +235,7 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
               whether the file would survive examination — the encoder fingerprint, compression
               history and sensor noise all persist through any metadata edit:
             </p>
-            <ul className="unhandled">
+            <ul className="list">
               {result.lint.outOfReach.map((o) => (
                 <li key={o}>{o}</li>
               ))}

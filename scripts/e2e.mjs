@@ -67,7 +67,7 @@ async function main() {
   if (/video hidden after the end|Motion Photo/i.test(body)) ok("post-EOI trailer revealed");
   else bad("trailer not revealed");
 
-  const imgs = await page.locator(".remnant img").count();
+  const imgs = await page.locator(".card-leak img").count();
   if (imgs > 0) ok(`${imgs} hidden asset(s) rendered as images`);
   else bad("no hidden asset previews rendered");
 

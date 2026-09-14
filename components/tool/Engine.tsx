@@ -179,7 +179,7 @@ export default function Engine({ initial = null, initialNote = null, onHandOff }
       </div>
 
       {error && <p className="err">{error}</p>}
-      {phase === "reading" && <p className="sub" style={{ marginTop: 18 }}>Reading…</p>}
+      {phase === "reading" && <p className="lede" style={{ marginTop: 18 }}>Reading…</p>}
 
       {report && (
         <>
@@ -190,12 +190,12 @@ export default function Engine({ initial = null, initialNote = null, onHandOff }
           <LayerPanel />
 
           {report.unhandled.length > 0 && (
-            <div className="panel">
-              <div className="panel-title">
-                <h2>What this did not inspect</h2>
+            <div className="card">
+              <div className="card-head">
+                <h2 className="t-headline-md">What this did not inspect</h2>
                 <span className="meta">stated, not hidden</span>
               </div>
-              <ul className="unhandled">
+              <ul className="list">
                 {report.unhandled.map((u, i) => (
                   <li key={i}>{u}</li>
                 ))}
@@ -204,18 +204,18 @@ export default function Engine({ initial = null, initialNote = null, onHandOff }
           )}
 
           <div className="actions">
-            <button className="primary" onClick={onClean} disabled={!canClean || phase === "cleaning"}>
+            <button className="btn btn-primary" onClick={onClean} disabled={!canClean || phase === "cleaning"}>
               {phase === "cleaning" ? "Cleaning…" : "Clean it"}
             </button>
             {outUrl && (
               <a href={outUrl} download={outName}>
-                <button>Download cleaned file</button>
+                <button className="btn">Download cleaned file</button>
               </a>
             )}
             {cleanedBlob.current && outName && onHandOff && (
-              <button onClick={handOff}>Forge an identity onto it</button>
+              <button className="btn" onClick={handOff}>Forge an identity onto it</button>
             )}
-            <button
+            <button className="btn"
               onClick={() => {
                 setFile(null);
                 setPhase("idle");

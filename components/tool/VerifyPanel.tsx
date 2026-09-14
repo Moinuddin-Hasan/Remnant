@@ -11,9 +11,9 @@ export default function VerifyPanel({ verify }: { verify: VerifyResult }) {
   const removed = verify.bytesBefore - verify.bytesAfter;
 
   return (
-    <div className={`panel ${verify.ok ? "verify-ok" : "verify-bad"}`}>
-      <div className="panel-title">
-        <h2>{verify.ok ? "Verified clean" : "Partially cleaned"}</h2>
+    <div className={`card ${verify.ok ? "card-ok" : "card-warn"}`}>
+      <div className="card-head">
+        <h2 className="t-headline-md">{verify.ok ? "Verified clean" : "Partially cleaned"}</h2>
         <span className="meta">re-read with the same engine</span>
       </div>
 

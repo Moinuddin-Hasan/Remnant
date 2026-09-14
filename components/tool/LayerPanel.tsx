@@ -30,14 +30,14 @@ const LAYERS = [
 
 export default function LayerPanel() {
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <h2>Three layers, and what we can actually reach</h2>
+    <div className="card">
+      <div className="card-head">
+        <h2 className="t-headline-md">Three layers, and what we can actually reach</h2>
         <span className="meta">one of three</span>
       </div>
-      <div className="layers">
+      <div className="grid">
         {LAYERS.map((l) => (
-          <div className={`layer ${l.cls}`} key={l.name}>
+          <div className={`well field ${l.cls}`} key={l.name}>
             <span className="status">{l.status}</span>
             <h3>{l.name}</h3>
             <p>{l.body}</p>

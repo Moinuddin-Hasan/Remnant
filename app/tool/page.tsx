@@ -7,15 +7,15 @@ import dynamicImport from "next/dynamic";
  * cannot survive that without being written somewhere it has no business being.
  */
 const Workspace = dynamicImport(() => import("@/components/tool/Workspace"), {
-  loading: () => <p className="sub">Loading the engine…</p>,
+  loading: () => <p className="lede">Loading the engine…</p>,
 });
 
 export default function ToolPage() {
   return (
-    <main className="wrap">
-      <p className="eyebrow">Remnant</p>
+    <main className="container page">
+      <p className="t-label">Remnant</p>
       <h1>Inspect a file</h1>
-      <p className="sub">Nothing is uploaded. Everything below happens in this tab.</p>
+      <p className="lede">Nothing is uploaded. Everything below happens in this tab.</p>
       <Workspace initial="inspect" />
     </main>
   );

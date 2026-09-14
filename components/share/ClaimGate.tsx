@@ -66,13 +66,13 @@ export default function ClaimGate({ id }: { id: string }) {
     }
   }, [id]);
 
-  if (state === "checking") return <p className="sub">Checking this link…</p>;
+  if (state === "checking") return <p className="lede">Checking this link…</p>;
 
   if (state === "gone") {
     return (
-      <div className="panel">
-        <div className="panel-title">
-          <h2>This link is no longer available</h2>
+      <div className="card">
+        <div className="card-head">
+          <h2 className="t-headline-md">This link is no longer available</h2>
         </div>
         <p className="note" style={{ marginTop: 0 }}>
           It was claimed, revoked by the sender, or it expired. Links are single-use by default
@@ -84,9 +84,9 @@ export default function ClaimGate({ id }: { id: string }) {
 
   if (state === "done" && file) {
     return (
-      <div className="panel verify-ok">
-        <div className="panel-title">
-          <h2>Decrypted in your browser</h2>
+      <div className="card card-ok">
+        <div className="card-head">
+          <h2 className="t-headline-md">Decrypted in your browser</h2>
           <span className="meta">{file.size.toLocaleString()} bytes</span>
         </div>
         <p className="note" style={{ marginTop: 0 }}>
@@ -95,7 +95,7 @@ export default function ClaimGate({ id }: { id: string }) {
         </p>
         <div className="actions">
           <a href={file.url} download={file.name}>
-            <button className="primary">Save {file.name}</button>
+            <button className="btn btn-primary">Save {file.name}</button>
           </a>
         </div>
       </div>
@@ -103,9 +103,9 @@ export default function ClaimGate({ id }: { id: string }) {
   }
 
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <h2>A file is waiting for you</h2>
+    <div className="card">
+      <div className="card-head">
+        <h2 className="t-headline-md">A file is waiting for you</h2>
         <span className="meta">
           {remaining} claim{remaining === 1 ? "" : "s"} left · expires in {mins(expiresIn)} min
         </span>
@@ -116,7 +116,7 @@ export default function ClaimGate({ id }: { id: string }) {
       </p>
       {error && <p className="err">{error}</p>}
       <div className="actions">
-        <button className="primary" onClick={onClaim} disabled={state === "claiming"}>
+        <button className="btn btn-primary" onClick={onClaim} disabled={state === "claiming"}>
           {state === "claiming" ? "Decrypting…" : "Claim and decrypt"}
         </button>
       </div>
