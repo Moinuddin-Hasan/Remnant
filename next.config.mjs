@@ -45,6 +45,13 @@ const SHARE_CSP = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  /**
+   * Required by docker/Dockerfile, which copies `.next/standalone` and refuses
+   * to build without it. Harmless on Vercel, which ignores the setting, so the
+   * hosted deployment and the self-host image build from one configuration.
+   */
+  output: "standalone",
   async headers() {
     return [
       {
