@@ -11,6 +11,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.4",
+    "@vercel/blob": "^2.8.0",
     "exifr": "^7.1.3",
     "next": "^16.2.9",
     "react": "^19.0.0",

@@ -1,0 +1,214 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createShare,
+  forgetExpired,
+  linkFor,
+  listShares,
+  revokeShare,
+  shareConfig,
+  shareStatus,
+  type LocalShare,
+  type ShareConfig,
+} from "@/lib/share/client";
+
+type Liveness = Record<string, { live: boolean; remaining: number } | undefined>;
+
+const mins = (ms: number) => Math.max(0, Math.round(ms / 60000));
+const kb = (n: number) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
+/**
+ * The creator's view.
+ *
+ * Everything listed here comes from `localStorage` — filenames, keys, manage
+ * tokens. The server holds none of it, which is the point worth showing on
+ * stage: this page can say "beach.mp4, 42 minutes left" while the same link
+ * queried against the API returns an opaque id and a rounded size.
+ */
+export default function Dashboard() {
+  const [config, setConfig] = useState<ShareConfig | null>(null);
+  const [shares, setShares] = useState<LocalShare[]>([]);
+  const [live, setLive] = useState<Liveness>({});
+  const [file, setFile] = useState<File | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [claims, setClaims] = useState(1);
+  const [ttlMins, setTtlMins] = useState(60);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const refresh = useCallback(async (list: readonly LocalShare[]) => {
+    const entries = await Promise.all(
+      list.map(async (s) => [s.id, (await shareStatus(s.id)) ?? undefined] as const),
+    );
+    setLive(Object.fromEntries(entries));
+  }, []);
+
+  useEffect(() => {
+    forgetExpired();
+    const list = listShares();
+    setShares(list);
+    void refresh(list);
+    shareConfig().then(setConfig).catch(() => setConfig(null));
+  }, [refresh]);
+
+  const onCreate = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    setProgress(0);
+    try {
+      await createShare(file, file.name, {
+        ttlMs: ttlMins * 60_000,
+        maxClaims: claims,
+        passphrase: passphrase || undefined,
+        onProgress: setProgress,
+      });
+      const list = listShares();
+      setShares(list);
+      void refresh(list);
+      setFile(null);
+      if (inputRef.current) inputRef.current.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [file, ttlMins, claims, passphrase, refresh]);
+
+  const onRevoke = useCallback(
+    async (share: LocalShare) => {
+      await revokeShare(share);
+      const list = listShares();
+      setShares(list);
+      void refresh(list);
+    },
+    [refresh],
+  );
+
+  const onCopy = useCallback(async (share: LocalShare) => {
+    try {
+      await navigator.clipboard.writeText(linkFor(share));
+      setCopied(share.id);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      setError("Could not copy — select the link and copy it manually.");
+    }
+  }, []);
+
+  return (
+    <>
+      <div className="panel">
+        <div className="panel-title">
+          <h2>Share a file</h2>
+          <span className="meta">
+            {config ? (config.mode === "hosted" ? "hosted storage" : "local storage") : "…"}
+          </span>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          style={{ marginBottom: 14 }}
+        />
+
+        <div className="layers" style={{ marginBottom: 14 }}>
+          <label className="layer">
+            <h3>Claims</h3>
+            <input
+              type="number"
+              min={1}
+              max={config?.maxClaims ?? 50}
+              value={claims}
+              onChange={(e) => setClaims(Math.max(1, Number(e.target.value)))}
+              style={{ width: "100%" }}
+            />
+            <p>How many times the link can be opened.</p>
+          </label>
+          <label className="layer">
+            <h3>Expires in (min)</h3>
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={ttlMins}
+              onChange={(e) => setTtlMins(Math.max(1, Number(e.target.value)))}
+              style={{ width: "100%" }}
+            />
+            <p>After this it is unreachable.</p>
+          </label>
+          {config?.passphraseRequired && (
+            <label className="layer">
+              <h3>Passphrase</h3>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                style={{ width: "100%" }}
+              />
+              <p>Required by this instance.</p>
+            </label>
+          )}
+        </div>
+
+        {error && <p className="err">{error}</p>}
+
+        <div className="actions">
+          <button className="primary" onClick={onCreate} disabled={!file || busy}>
+            {busy ? `Encrypting… ${Math.round(progress * 100)}%` : "Encrypt and upload"}
+          </button>
+        </div>
+
+        <p className="note">
+          The file is encrypted here before anything is uploaded. The key goes into the link
+          after the <code style={{ fontFamily: "var(--mono)" }}>#</code>, which browsers never
+          send in a request — so the server stores ciphertext it has no key for.
+        </p>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title">
+          <h2>Your links</h2>
+          <span className="meta">{shares.length} on this device</span>
+        </div>
+
+        {shares.length === 0 ? (
+          <p className="note" style={{ marginTop: 0 }}>
+            Nothing yet. Links you create are remembered in this browser only — the server has
+            no idea which are yours.
+          </p>
+        ) : (
+          shares.map((s) => {
+            const status = live[s.id];
+            const dead = !status?.live;
+            return (
+              <div className="row" key={s.id}>
+                <span className={`dot ${dead ? "benign" : "critical"}`} aria-hidden />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="row-label">
+                    {s.name} <span style={{ color: "var(--muted)" }}>· {kb(s.size)}</span>
+                  </div>
+                  <div className="row-value">
+                    {dead
+                      ? "claimed, revoked or expired"
+                      : `${status?.remaining ?? 0} claim(s) left · ${mins(s.expiresAt - Date.now())} min left`}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flex: "none" }}>
+                  {!dead && (
+                    <button onClick={() => onCopy(s)}>{copied === s.id ? "Copied" : "Copy link"}</button>
+                  )}
+                  <button onClick={() => onRevoke(s)}>{dead ? "Remove" : "Revoke"}</button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
