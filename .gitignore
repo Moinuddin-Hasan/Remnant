@@ -9,3 +9,5 @@ build/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+.share-data/
+.claude/

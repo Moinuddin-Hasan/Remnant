@@ -1,7 +1,8 @@
 import { assemble, type Edit } from "./patch";
 import { readerOf } from "./reader";
 import { resolve, SNIFF_BYTES } from "./registry";
-import { tierOf, type FormatHandler } from "./handler";
+import { tierOf, type FormatHandler, type SpoofProfile } from "./handler";
+import { lint, type LintResult } from "../forge/lint";
 import {
   DEFAULT_STRIP,
   type Report,
@@ -123,6 +124,51 @@ export async function cleanFile(
   };
 
   return { output, verify, rebuilt, rebuildReason };
+}
+
+export interface ForgeResult {
+  readonly output: Blob;
+  /** What the forged file actually reads back as — not what we asked for. */
+  readonly readBack: Report;
+  readonly lint: LintResult;
+  readonly bytesBefore: number;
+  readonly bytesAfter: number;
+}
+
+/**
+ * Write a forged identity onto a file, then read the result back.
+ *
+ * The read-back is the point: a writer that reports success without re-parsing
+ * its own output is how you end up demoing a file whose EXIF block no reader
+ * accepts. The lint runs against what came out, not against the profile that
+ * went in.
+ */
+export async function forgeFile(
+  file: Blob,
+  filename: string,
+  profile: SpoofProfile,
+): Promise<ForgeResult> {
+  const handler = await handlerFor(file, filename);
+  if (!handler.spoof) {
+    throw new Error(`${handler.label} has no write path — forging is not supported for it.`);
+  }
+
+  const src = readerOf(file);
+  const before = await handler.inspect(src);
+  const edit = await handler.spoof(src, before, profile);
+
+  const output =
+    edit.kind === "patch" ? assemble(file, edit.plan, file.type) : await edit.build();
+
+  const readBack = await handler.inspect(readerOf(output));
+
+  return {
+    output,
+    readBack,
+    lint: lint(readBack, profile),
+    bytesBefore: file.size,
+    bytesAfter: output.size,
+  };
 }
 
 /** Extract one embedded asset as its own Blob, for the remnant reveal. */
