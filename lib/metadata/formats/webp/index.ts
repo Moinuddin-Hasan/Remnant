@@ -1,7 +1,8 @@
-import type { FormatHandler } from "../../handler";
+import type { FormatHandler, SpoofProfile } from "../../handler";
 import { drop, planOf, replace, type Edit, type Patch } from "../../patch";
 import type { Reader } from "../../reader";
 import type { ByteRange, EmbeddedAsset, Finding, Report, StripOptions } from "../../types";
+import { buildTiff } from "../jpeg/exif-write";
 import { tiffFindings, xmpFindings } from "../png/tiff";
 
 /**
@@ -208,6 +209,96 @@ async function plan(src: Reader, _report: Report, opts: StripOptions): Promise<E
   return { kind: "patch", plan: planOf(patches) };
 }
 
+const FLAG_ALPHA = 0x10;
+
+/**
+ * Order patches by offset, and put a zero-length insert ahead of a drop that
+ * starts at the same offset — otherwise the insert lands inside the drop and
+ * validatePlan rightly rejects it. The engine's own sort is stable, so this
+ * order survives it.
+ */
+export const byStartInsertsFirst = (a: Patch, b: Patch): number =>
+  a.range.start - b.range.start || (a.range.end - a.range.start) - (b.range.end - b.range.start);
+
+const riffChunk = (fourcc: string, data: Uint8Array): Uint8Array => {
+  const out = new Uint8Array(8 + data.length + (data.length & 1)); // pad byte stays zero
+  for (let i = 0; i < 4; i++) out[i] = fourcc.charCodeAt(i) & 0xff;
+  out.set(u32le(data.length), 4);
+  out.set(data, 8);
+  return out;
+};
+
+const u24le = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff];
+
+/**
+ * A simple-format WebP (bare `VP8 ` or `VP8L`) has no extended header, and
+ * EXIF is only legal in the extended format. Build a VP8X from the canvas size
+ * in the bitstream header so the forged EXIF has somewhere legal to live.
+ */
+async function vp8xFor(src: Reader, s: WebpStructure): Promise<Uint8Array> {
+  const img = s.chunks.find((c) => c.fourcc === "VP8 " || c.fourcc === "VP8L");
+  if (!img) throw new Error("This WebP has no image bitstream to attach an identity to.");
+  const d = await src.bytes({ start: img.dataStart, end: Math.min(img.dataEnd, img.dataStart + 10) });
+  let w: number;
+  let h: number;
+  let alpha = false;
+  if (img.fourcc === "VP8 ") {
+    if (d[3] !== 0x9d || d[4] !== 0x01 || d[5] !== 0x2a) throw new Error("VP8 start code missing.");
+    w = (d[6]! | (d[7]! << 8)) & 0x3fff;
+    h = (d[8]! | (d[9]! << 8)) & 0x3fff;
+  } else {
+    if (d[0] !== 0x2f) throw new Error("VP8L signature missing.");
+    const bits = (d[1]! | (d[2]! << 8) | (d[3]! << 16) | (d[4]! << 24)) >>> 0;
+    w = (bits & 0x3fff) + 1;
+    h = ((bits >>> 14) & 0x3fff) + 1;
+    alpha = ((bits >>> 28) & 1) === 1;
+  }
+  const payload = new Uint8Array([FLAG_EXIF | (alpha ? FLAG_ALPHA : 0), 0, 0, 0, ...u24le(w - 1), ...u24le(h - 1)]);
+  return riffChunk("VP8X", payload);
+}
+
+/**
+ * Write a forged identity as an `EXIF` chunk (a bare TIFF block) placed after
+ * the image data, where the extended format puts it. Every other optional
+ * chunk is dropped, the VP8X EXIF flag is SET (and ICC/XMP cleared), and the
+ * RIFF size is rewritten — all in one patch plan.
+ */
+async function spoof(src: Reader, _report: Report, profile: SpoofProfile): Promise<Edit> {
+  const s = await walkWebp(src);
+  const lastImage = [...s.chunks].reverse().find((c) => IMAGE_CHUNKS.has(c.fourcc) && c.fourcc !== "VP8X");
+  if (!lastImage) throw new Error("This WebP has no image data to attach an identity to.");
+
+  const exif = riffChunk("EXIF", buildTiff(profile));
+  const patches: Patch[] = [];
+  let delta = exif.length;
+
+  for (const c of s.chunks) {
+    if (IMAGE_CHUNKS.has(c.fourcc)) continue;
+    patches.push(drop({ start: c.start, end: c.end }));
+    delta -= c.end - c.start;
+  }
+
+  const vp8x = s.chunks.find((c) => c.fourcc === "VP8X");
+  if (vp8x) {
+    const flags = await src.u8(vp8x.dataStart);
+    const next = (flags | FLAG_EXIF) & ~FLAG_XMP & ~FLAG_ICC;
+    if (next !== flags) {
+      patches.push(replace({ start: vp8x.dataStart, end: vp8x.dataStart + 1 }, new Uint8Array([next])));
+    }
+  } else {
+    const header = await vp8xFor(src, s);
+    patches.push(replace({ start: 12, end: 12 }, header));
+    delta += header.length;
+  }
+
+  patches.push(replace({ start: 4, end: 8 }, u32le(s.riffSize + delta)));
+  patches.push(replace({ start: lastImage.end, end: lastImage.end }, exif));
+  if (s.trailer) patches.push(drop(s.trailer));
+
+  patches.sort(byStartInsertsFirst);
+  return { kind: "patch", plan: planOf(patches) };
+}
+
 export const webpHandler: FormatHandler = {
   id: "webp",
   label: "WebP image",
@@ -216,4 +307,5 @@ export const webpHandler: FormatHandler = {
     head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50, // WEBP
   inspect,
   plan,
+  spoof,
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { baseWebp, buildFixtureWebp, WEBP_FIXTURE } from "../../../../fixtures/webp";
-import { cleanFile, inspectFile } from "../../pipeline";
+import { cleanFile, forgeFile, inspectFile } from "../../pipeline";
 import { readerOf } from "../../reader";
 import { DEFAULT_STRIP } from "../../types";
 import { walkWebp } from ".";
@@ -94,5 +94,45 @@ describe("webp clean", () => {
     const plain = baseWebp();
     const { output } = await cleanFile(asBlob(plain), "plain.webp");
     expect(Array.from(await bytesOf(output))).toEqual(Array.from(plain));
+  });
+});
+
+describe("webp forge", () => {
+  const PROFILE = {
+    make: "SONY",
+    model: "ILCE-7M4",
+    dateTime: "2024:05:01 12:00:00",
+    latitude: -33.8568,
+    longitude: 151.2153,
+  };
+
+  async function expectForged(input: Uint8Array) {
+    const { readBack, output } = await forgeFile(asBlob(input), "fixture.webp", PROFILE);
+    expect(find(readBack, "exif.Make")?.value).toBe(PROFILE.make);
+    expect(find(readBack, "exif.Model")?.value).toBe(PROFILE.model);
+    const [lat, lon] = find(readBack, "exif.gps")!.value.split(",").map((v) => Number(v.trim()));
+    expect(lat).toBeCloseTo(PROFILE.latitude, 4);
+    expect(lon).toBeCloseTo(PROFILE.longitude, 4);
+
+    const out = await bytesOf(output);
+    const s = await assertWellFormed(out);
+    expect(s.chunks.map((c) => c.fourcc)).toEqual(["VP8X", "VP8 ", "EXIF"]);
+    // EXIF flag SET, ICC and XMP flags clear, canvas 16x16.
+    const x = s.chunks[0]!.dataStart;
+    expect(out[x]).toBe(0x08);
+    expect([out[x + 4], out[x + 7]]).toEqual([15, 15]);
+    expect(Array.from(out.subarray(s.chunks[1]!.start, s.chunks[1]!.end))).toEqual(Array.from(fixture.vp8));
+    return readBack;
+  }
+
+  it("replaces EXIF, XMP and ICCP and reads back with the values that went in", async () => {
+    const readBack = await expectForged(fixture.bytes);
+    const values = readBack.findings.map((f) => f.value);
+    expect(values).not.toContain(WEBP_FIXTURE.make);
+    expect(values).not.toContain(WEBP_FIXTURE.xmpCreator);
+  });
+
+  it("builds a VP8X header when forging a simple-format WebP", async () => {
+    await expectForged(baseWebp());
   });
 });

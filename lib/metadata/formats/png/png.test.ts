@@ -1,7 +1,7 @@
 import { crc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildFixturePng, PNG_FIXTURE } from "../../../../fixtures/png";
-import { cleanFile, inspectFile } from "../../pipeline";
+import { cleanFile, forgeFile, inspectFile } from "../../pipeline";
 import { readerOf } from "../../reader";
 import { walkPng } from ".";
 
@@ -95,5 +95,54 @@ describe("png clean", () => {
     expect(types).toContain("iCCP");
     // iCCP is benign, so keeping it must not flip the verdict to "partially cleaned".
     expect(kept.verify.ok).toBe(true);
+  });
+});
+
+describe("png forge", () => {
+  const PROFILE = {
+    make: "Canon",
+    model: "Canon EOS R5",
+    dateTime: "2024:05:01 12:00:00",
+    latitude: 48.8584,
+    longitude: 2.2945,
+    artist: "Nobody In Particular",
+  };
+
+  async function expectForged(input: Blob) {
+    const { readBack, output } = await forgeFile(input, "fixture.png", PROFILE);
+    expect(find(readBack, "exif.Make")?.value).toBe(PROFILE.make);
+    expect(find(readBack, "exif.Model")?.value).toBe(PROFILE.model);
+    expect(find(readBack, "exif.Artist")?.value).toBe(PROFILE.artist);
+    const [lat, lon] = find(readBack, "exif.gps")!.value.split(",").map((v) => Number(v.trim()));
+    expect(lat).toBeCloseTo(PROFILE.latitude, 4);
+    expect(lon).toBeCloseTo(PROFILE.longitude, 4);
+
+    const out = await bytesOf(output);
+    const s = await walkPng(readerOf(output));
+    const types = s.chunks.map((c) => c.type);
+    expect(types.indexOf("eXIf")).toBeGreaterThan(-1);
+    expect(types.indexOf("eXIf")).toBeLessThan(types.indexOf("IDAT"));
+    expect(s.trailer).toBeNull();
+    for (const c of s.chunks) {
+      const stored = new DataView(out.buffer, out.byteOffset).getUint32(c.dataEnd);
+      expect(crc32(out.subarray(c.start + 4, c.dataEnd)), `${c.type} CRC`).toBe(stored);
+    }
+    return { readBack, types };
+  }
+
+  it("replaces the real identity and reads back with the values that went in", async () => {
+    const { readBack, types } = await expectForged(asBlob());
+    // Nothing of the original identity survives next to the forgery.
+    const values = readBack.findings.map((f) => f.value);
+    for (const old of [PNG_FIXTURE.author, PNG_FIXTURE.comment, PNG_FIXTURE.xmpCreator, PNG_FIXTURE.make]) {
+      expect(values).not.toContain(old);
+    }
+    expect(types).toEqual(["IHDR", "pHYs", "eXIf", "IDAT", "IEND"]);
+  });
+
+  it("inserts an eXIf chunk into a PNG that has none", async () => {
+    const { output } = await cleanFile(asBlob(), "fixture.png");
+    const { types } = await expectForged(output);
+    expect(types).toEqual(["IHDR", "pHYs", "eXIf", "IDAT", "IEND"]);
   });
 });

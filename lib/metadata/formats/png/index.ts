@@ -1,7 +1,9 @@
-import type { FormatHandler } from "../../handler";
-import { drop, planOf, type Edit, type Patch } from "../../patch";
+import type { FormatHandler, SpoofProfile } from "../../handler";
+import { drop, planOf, replace, type Edit, type Patch } from "../../patch";
 import type { Reader } from "../../reader";
 import type { ByteRange, EmbeddedAsset, Finding, Report, StripOptions } from "../../types";
+import { buildTiff } from "../jpeg/exif-write";
+import { pngChunk } from "./crc";
 import { stripExifPrefix, tiffFindings, xmpFindings } from "./tiff";
 
 /**
@@ -387,10 +389,49 @@ async function plan(src: Reader, _report: Report, opts: StripOptions): Promise<E
   return { kind: "patch", plan: planOf(patches) };
 }
 
+/**
+ * Write a forged identity as an `eXIf` chunk (a bare TIFF block, no
+ * `Exif\0\0` prefix), through the same patch engine as the strip.
+ *
+ * An existing eXIf before IDAT is replaced in place; otherwise the new chunk
+ * is inserted immediately before the first IDAT as a zero-length replace.
+ * Every other metadata chunk is dropped: an old tEXt naming the real author
+ * beside a forged EXIF block is the most obvious contradiction a file can
+ * carry, and our own linter flags it.
+ */
+async function spoof(src: Reader, _report: Report, profile: SpoofProfile): Promise<Edit> {
+  const s = await walkPng(src);
+  const idat = s.chunks.find((c) => c.type === "IDAT");
+  if (!idat) throw new Error("This PNG has no IDAT chunk, so there is no image to attach an identity to.");
+
+  const exif = pngChunk("eXIf", buildTiff(profile));
+  const patches: Patch[] = [];
+  let placed = false;
+  for (const c of s.chunks) {
+    if (!isAncillary(c.type) || RENDERING.has(c.type)) continue;
+    const range = { start: c.start, end: c.end };
+    if (!placed && c.type === "eXIf" && c.end <= idat.start) {
+      patches.push(replace(range, exif));
+      placed = true;
+    } else {
+      patches.push(drop(range));
+    }
+  }
+  if (!placed) patches.push(replace({ start: idat.start, end: idat.start }, exif));
+  if (s.trailer) patches.push(drop(s.trailer));
+
+  // Offset order, with a zero-length insert ahead of anything starting at the same offset.
+  patches.sort(
+    (a, b) => a.range.start - b.range.start || (a.range.end - a.range.start) - (b.range.end - b.range.start),
+  );
+  return { kind: "patch", plan: planOf(patches) };
+}
+
 export const pngHandler: FormatHandler = {
   id: "png",
   label: "PNG image",
   sniff: (head) => SIGNATURE.every((v, i) => head[i] === v),
   inspect,
   plan,
+  spoof,
 };
