@@ -1,0 +1,18 @@
+node_modules
+.next
+.git
+.gitignore
+.vercel
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+
+# Tests and their fixtures are not part of the image. Excluding the tests as
+# well matters: `next build` type-checks every .ts file, and a test importing a
+# fixture that is not in the context would fail the build.
+fixtures
+**/*.test.ts
+**/*.test.tsx
+
+docker

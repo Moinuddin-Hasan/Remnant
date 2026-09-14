@@ -1,0 +1,41 @@
+# Self-hosted Remnant — no accounts, no third-party services.
+#
+#   cd docker && docker compose up --build
+#   then open http://localhost:3000/tool
+#
+# ⚠ SECURE CONTEXT. Share encrypts in the browser with crypto.subtle, which
+# browsers only expose in a secure context: https://, or http://localhost /
+# http://127.0.0.1. A plain-http LAN address such as http://192.168.1.20:3000
+# is NOT a secure context, so encryption is unavailable there and the app
+# refuses to share. To use Remnant from other machines, put it behind a
+# reverse proxy that terminates TLS (Caddy, nginx, Traefik) and browse to the
+# https:// address. Inspect & Clean works either way; it never touches the
+# network.
+#
+# That is also why the port below is bound to 127.0.0.1 by default: exposing
+# it on 0.0.0.0 over plain http gives LAN users a tool whose Share mode cannot
+# work. Change it to "3000:3000" only if a TLS proxy sits in front.
+
+name: remnant
+
+services:
+  remnant:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: remnant:local
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Share storage: encrypted blobs only. The server never holds a key.
+      - remnant-data:/data
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  remnant-data:
