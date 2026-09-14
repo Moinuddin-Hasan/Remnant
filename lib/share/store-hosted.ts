@@ -1,6 +1,6 @@
-import { del, head, list } from "@vercel/blob";
+import { del, get, head, list } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
-import { hashToken, SHARE_ID } from "./id";
+import { blobPathFor, hashToken, SHARE_ID } from "./id";
 import {
   MAX_CIPHERTEXT,
   QUOTA_BYTES,
@@ -24,11 +24,19 @@ const PREFIX = "shares/";
  * to Blob with a short-lived token, which is both why a 100 MB video works at
  * all (Vercel caps request bodies at 4.5 MB) and why the server never touches
  * plaintext-adjacent data.
+ *
+ * The store is PRIVATE. Confidentiality does not depend on that — what lands
+ * there is ciphertext encrypted with a key the server never receives — but the
+ * claim does: a public blob URL is a bearer token, so anyone who obtained it
+ * could keep fetching after the burn. Private blobs force every read back
+ * through this code, which is where the atomic counter lives.
  */
 
 interface StoredMeta {
   readonly id: string;
   readonly blobUrl: string;
+  /** Private blobs are read by pathname through an authenticated call. */
+  readonly pathname: string;
   readonly size: number;
   readonly createdAt: number;
   readonly expiresAt: number;
@@ -143,6 +151,7 @@ export class HostedShareStore implements ShareStore {
     const meta: StoredMeta = {
       id,
       blobUrl,
+      pathname: info.pathname,
       size,
       createdAt: now,
       expiresAt: now + ttlMs,
@@ -188,12 +197,17 @@ export class HostedShareStore implements ShareStore {
       return null;
     }
 
-    const response = await fetch(meta.blobUrl, { cache: "no-store" });
-    if (!response.ok) {
+    // Authenticated read. A private blob has no fetchable public URL, which is
+    // the point — the bytes cannot be pulled without going through this claim.
+    const found = await get(meta.pathname ?? blobPathFor(id), {
+      access: "private",
+      useCache: false,
+    }).catch(() => null);
+    if (!found || found.statusCode !== 200) {
       await this.destroy(id);
       return null;
     }
-    const ciphertext = new Uint8Array(await response.arrayBuffer());
+    const ciphertext = new Uint8Array(await new Response(found.stream).arrayBuffer());
 
     if (remaining === 0) await this.destroy(id);
 

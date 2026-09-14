@@ -7,7 +7,7 @@
  * merely dereferenced.
  */
 import { Redis } from "@upstash/redis";
-import { del, head, list, put } from "@vercel/blob";
+import { del, get, head, list, put } from "@vercel/blob";
 
 const ok = (m) => console.log(`  PASS  ${m}`);
 const bad = (m) => {
@@ -70,7 +70,7 @@ async function checkBlob() {
 
   try {
     const uploaded = await put(pathname, Buffer.from(payload), {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       contentType: "application/octet-stream",
     });
@@ -80,9 +80,14 @@ async function checkBlob() {
     if (info.size === payload.length) ok(`head reports the right size (${info.size} bytes)`);
     else bad(`head size ${info.size}, expected ${payload.length}`);
 
-    const fetched = new Uint8Array(await (await fetch(uploaded.url, { cache: "no-store" })).arrayBuffer());
-    if (Buffer.compare(Buffer.from(fetched), Buffer.from(payload)) === 0) ok("fetched bytes match");
-    else bad("fetched bytes differ");
+    const found = await get(pathname, { access: "private", useCache: false });
+    const fetched = new Uint8Array(await new Response(found.stream).arrayBuffer());
+    if (Buffer.compare(Buffer.from(fetched), Buffer.from(payload)) === 0) ok("authenticated read returns the right bytes");
+    else bad("authenticated read returned different bytes");
+
+    const anonymous = await fetch(uploaded.url, { cache: "no-store" }).then((r) => r.status).catch(() => 0);
+    if (anonymous !== 200) ok(`an unauthenticated fetch of the blob URL is refused (${anonymous})`);
+    else bad("the blob URL is publicly fetchable — the burn would be unenforceable");
 
     // The part that matters for a 256 MB quota: is it really gone?
     await del(uploaded.url);

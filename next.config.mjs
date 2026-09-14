@@ -60,10 +60,27 @@ const SEALED_CSP = [
  * is only worth making where it is actually true. Blob storage is named
  * explicitly so an upload cannot be redirected to an arbitrary host.
  */
+/**
+ * A client upload to a PRIVATE store touches two hosts, and both have to be
+ * named or the browser blocks the PUT with no error the page can catch:
+ *
+ *   - `vercel.com/api/blob` issues and validates the upload, and
+ *   - `<store>.private.blob.vercel-storage.com` receives the bytes.
+ *
+ * The public host stays listed so a store switched to public access keeps
+ * working. Everything else is still refused: an upload cannot be redirected to
+ * an arbitrary origin.
+ */
+const BLOB_HOSTS = [
+  "https://vercel.com",
+  "https://*.private.blob.vercel-storage.com",
+  "https://*.public.blob.vercel-storage.com",
+  "https://blob.vercel-storage.com",
+].join(" ");
+
 const SHARE_CSP = [
   ...BASE_CSP,
-  "connect-src 'self' https://*.public.blob.vercel-storage.com https://blob.vercel-storage.com" +
-    (isProduction ? "" : " ws: wss:"),
+  `connect-src 'self' ${BLOB_HOSTS}` + (isProduction ? "" : " ws: wss:"),
 ].join("; ");
 
 /** @type {import('next').NextConfig} */

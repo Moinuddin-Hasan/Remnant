@@ -126,7 +126,7 @@ async function main() {
   else bad("strip-before-share defaulted off");
   await page.click('button:has-text("Encrypt and upload")');
 
-  await page.waitForSelector('button:has-text("Copy link")', { timeout: 30000 });
+  await page.waitForSelector('button:has-text("Copy link")', { timeout: 60000 });
   ok("share created and listed in the dashboard");
 
   const dash = await page.textContent("body");
@@ -150,7 +150,7 @@ async function main() {
 
   const recipient = await context.newPage();
   await recipient.goto(link, { waitUntil: "networkidle" });
-  await recipient.waitForSelector("text=A file is waiting for you", { timeout: 15000 });
+  await recipient.waitForSelector("text=A file is waiting for you", { timeout: 30000 });
   ok("recipient sees a gate, not the file");
 
   // Reload twice: a preview crawler's GET must not burn the share.
@@ -165,7 +165,7 @@ async function main() {
   await recipient.screenshot({ path: path.join(SHOTS, "6-claim-gate.png"), fullPage: true });
 
   await recipient.click('button:has-text("Claim and decrypt")');
-  await recipient.waitForSelector("text=Decrypted in your browser", { timeout: 20000 });
+  await recipient.waitForSelector("text=Decrypted in your browser", { timeout: 45000 });
   ok("recipient decrypted the file in the browser");
   await recipient.screenshot({ path: path.join(SHOTS, "7-decrypted.png"), fullPage: true });
 

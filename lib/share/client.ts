@@ -87,7 +87,10 @@ export async function createShare(
 
   if (config.mode === "hosted") {
     const result = await upload(blobPathFor(id), new Blob([ciphertext.slice().buffer as ArrayBuffer]), {
-      access: "public", // the payload is ciphertext; confidentiality is the key, not the ACL
+      // Private: the payload is already ciphertext, so this is not about
+      // confidentiality — it is what forces every read back through our
+      // claim endpoint so the burn is actually enforceable.
+      access: "private",
       handleUploadUrl: "/api/share/upload",
       contentType: "application/octet-stream",
       clientPayload: JSON.stringify({ passphrase: options.passphrase ?? "" }),
