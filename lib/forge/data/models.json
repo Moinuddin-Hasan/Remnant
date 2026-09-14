@@ -1,0 +1,11 @@
+[
+  { "make": "Apple", "model": "iPhone 12", "released": "2020-10-23" },
+  { "make": "Apple", "model": "iPhone 13", "released": "2021-09-24" },
+  { "make": "Apple", "model": "iPhone 14 Pro", "released": "2022-09-16" },
+  { "make": "Apple", "model": "iPhone 15 Pro", "released": "2023-09-22" },
+  { "make": "Google", "model": "Pixel 7", "released": "2022-10-13" },
+  { "make": "Google", "model": "Pixel 8 Pro", "released": "2023-10-12" },
+  { "make": "Canon", "model": "Canon EOS R5", "released": "2020-07-30" },
+  { "make": "Sony", "model": "ILCE-7M4", "released": "2021-12-23" },
+  { "make": "NIKON CORPORATION", "model": "NIKON Z 6", "released": "2018-11-16" }
+]

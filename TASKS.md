@@ -43,6 +43,8 @@ they will make it.
 | **`lib/metadata/formats/isobmff/`** | **Rayyan** |
 | **`fixtures/png.ts` `fixtures/webp.ts` `fixtures/isobmff.ts`** | **Rayyan** |
 | **`lib/forge/data/models.json`** | **Rayyan** |
+| **`lib/channels/data/channels.json`** | **Rayyan** |
+| `lib/channels/` (everything else) | Moinuddin |
 | **`docker/`** `.dockerignore` | **Rayyan** |
 
 ### The one shared file
@@ -69,6 +71,29 @@ export interface FormatHandler {
   spoof?(src, report, profile): Promise<Edit>;          // omit ⇒ no Forge
 }
 ```
+
+### ⚠ Handlers now need `spoof` as well as `plan`
+
+Forge is a first-class mode and must work on every format we can write, not just JPEG. PNG and
+WebP ship **both** `plan` (strip) and `spoof` (write a forged identity).
+
+`spoof` takes a `SpoofProfile` — make, model, dateTime, offsetTime, latitude, longitude,
+software, artist — and returns an `Edit` exactly like `plan`. Build the metadata block, splice
+it over the existing one, and drop every *other* metadata segment while you are there. Leaving
+an old text chunk naming the real camera beside a forged block is the most obvious
+contradiction a file can carry, and our own linter will flag it.
+
+- **PNG**: write an `eXIf` chunk (payload is a bare TIFF block — no `Exif\0\0` prefix) before
+  `IDAT`, dropping existing text and EXIF chunks.
+- **WebP**: write an `EXIF` RIFF chunk, again a bare TIFF block, and **set** the `0x08` flag bit
+  in `VP8X` rather than clearing it. Fix the RIFF size.
+- **ISOBMFF**: `inspect` and `plan` only — **no `spoof`**. Writing `udta`/`©xyz` changes box
+  sizes, which puts you straight back into the chunk-offset problem the `free`-box trick exists
+  to avoid. Omit the method and the UI refuses forging automatically.
+
+⚠ `lib/metadata/formats/jpeg/exif-write.ts` exports **`buildTiff(profile)`**, which builds the
+TIFF block both PNG and WebP need. Import it — do not reimplement it. That file is mine and
+already tested; calling across is fine, editing it is not.
 
 Three things to internalise before writing a handler:
 
@@ -103,9 +128,11 @@ Structure: an 8-byte signature, then chunks of `length:4 BE | type:4 | data | cr
 always survive. **Deleting a whole chunk leaves every other chunk's CRC valid** — you do not
 need a CRC32 implementation, and if you find yourself writing one you have taken a wrong turn.
 
+- `spoof`: write an `eXIf` chunk from `buildTiff(profile)`, placed before `IDAT`.
+
 **Done when:** a PNG with text chunks and an `eXIf` block inspects correctly, strips to zero
-findings, the `IDAT` bytes are identical before and after, and the output opens in an image
-viewer.
+findings, the `IDAT` bytes are identical before and after, a forged PNG reads back with the
+values that went in, and the output opens in an image viewer.
 
 ---
 
@@ -128,8 +155,11 @@ first pass; it is not a bug to find later.
 
 ⚠ Remember the odd-length padding byte when computing ranges.
 
-**Done when:** a WebP with EXIF and XMP strips clean, `VP8X` flags are correct, and the output
-passes a strict decoder.
+- `spoof`: write an `EXIF` chunk from `buildTiff(profile)` and **set** the `0x08` `VP8X` flag
+  bit, fixing the RIFF size.
+
+**Done when:** a WebP with EXIF and XMP strips clean, `VP8X` flags are correct in both
+directions, a forged WebP reads back correctly, and the output passes a strict decoder.
 
 ---
 
@@ -190,10 +220,18 @@ Pure data entry — no code, and it does not touch anything I am building.
 ]
 ```
 
-Roughly 40 entries: recent iPhones, Pixels, Samsung Galaxy S series, and a handful of Canon,
-Nikon, Sony and Fujifilm bodies. `model` must match the EXIF `Model` string exactly as the
-device writes it — check a real photo or an online EXIF sample rather than guessing, because a
-near-miss makes the rule silently never fire.
+**A 9-entry seed already exists** so the linter compiles — extend it, do not start over. It is
+still your file.
+
+Target roughly 40 entries: recent iPhones, Pixels, Samsung Galaxy S series, and a handful of
+Canon, Nikon, Sony and Fujifilm bodies. `model` must match the EXIF `Model` string exactly as
+the device writes it — check a real photo or an online EXIF sample rather than guessing,
+because a near-miss makes the rule silently never fire.
+
+⚠ **The EXIF string is often not the marketing name.** Samsung writes model codes like
+`SM-S918B`, not "Galaxy S23 Ultra"; Sony writes `ILCE-7M4`, not "A7 IV"; Nikon writes
+`NIKON Z 6` with a space and puts `NIKON CORPORATION` in Make. Getting this wrong is the main
+way this task fails silently.
 
 ⚠ The UI will say "checked against N known models", never "verified". Do not pad the list with
 guesses; a wrong release date produces a false accusation against a genuine photo, which is the
@@ -226,11 +264,46 @@ silently unavailable.
 
 ---
 
+## R6 — Channel measurement
+
+**Branch** `data/channels` · **File** `lib/channels/data/channels.json`
+
+The channel router is shipping. I am building the component; you are producing the data,
+because it is legwork rather than code and it cannot be invented.
+
+Take **one** test image with known GPS, a known camera serial and a known MPF second image —
+`fixtures/build.ts` produces exactly this, or use a real phone photo. Send it to yourself
+through every channel, download what arrives, re-read it with our own tool, record what
+survived.
+
+Channels and modes: WhatsApp (photo / HD photo / document), Telegram (photo / file), Instagram
+post, Gmail attachment, Google Drive link, Signal, Discord.
+
+```json
+{
+  "channel": "WhatsApp", "mode": "document",
+  "stripsExif": false, "reEncodes": false, "keepsGps": true,
+  "verifiedOn": "2026-09-14", "os": "Android 15", "appVersion": "2.24.x",
+  "note": "byte-identical to the original"
+}
+```
+
+⚠ **Every row needs `verifiedOn`, `os` and `appVersion`.** Rows without them render as
+"unverified — do not rely on this". Platform behaviour is undocumented, changes silently and
+differs by client version, so an invented row is misinformation shipped inside a security tool.
+A judge with a phone can test one of these in thirty seconds.
+
+⚠ Do not copy the published tables. MetaClean and IPTC have both published comparisons; they
+are a sanity check on our numbers, not a source. Our claim is that we measured it ourselves.
+
+---
+
 ## Suggested order
 
-R1 → R2 → R5 → R3 → R4. PNG and WebP are quick wins that get you fluent in the handler
+R1 → R2 → R5 → R6 → R3 → R4. PNG and WebP are quick wins that get you fluent in the handler
 interface before ISOBMFF, which is the hard one. Docker is independent and can slot in whenever
-you want a break from binary formats. R4 is an evening of data entry and can happen last.
+you want a break from binary formats. R6 is an evening of sending files to yourself. R4 is an
+evening of data entry and can happen last.
 
 ---
 

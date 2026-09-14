@@ -1,6 +1,7 @@
 import exifr from "exifr";
-import type { FormatHandler } from "../../handler";
-import { drop, planOf, type Edit } from "../../patch";
+import type { FormatHandler, SpoofProfile } from "../../handler";
+import { drop, planOf, replace, type Edit } from "../../patch";
+import { buildExifApp1 } from "./exif-write";
 import type { Reader } from "../../reader";
 import type { EmbeddedAsset, Finding, Report, StripOptions } from "../../types";
 import { parseMpf } from "./mpf";
@@ -239,10 +240,54 @@ async function plan(src: Reader, _report: Report, opts: StripOptions): Promise<E
   return { kind: "patch", plan: planOf(patches) };
 }
 
+/**
+ * Write a forged identity onto the file.
+ *
+ * Goes through the same patch engine the stripper uses, so there is exactly
+ * one write path and one corruption mode. An existing Exif APP1 is replaced in
+ * place; when there is none, the new segment is inserted directly after SOI as
+ * a zero-length replace.
+ *
+ * Any OTHER metadata segment is dropped first. Leaving an old XMP packet that
+ * still names the real camera beside a forged EXIF block is the single most
+ * obvious contradiction a file can carry, and the linter would immediately
+ * flag our own output.
+ */
+async function spoof(src: Reader, _report: Report, profile: SpoofProfile): Promise<Edit> {
+  const structure = await walkJpeg(src);
+  const app1 = buildExifApp1(profile);
+  const patches = [];
+
+  let placed = false;
+  for (const seg of structure.segments) {
+    if (isStructural(seg.marker)) continue;
+    const ident = seg.identifier ?? "";
+    if (ident.startsWith("JFIF")) continue;
+
+    if (!placed && ident.startsWith("Exif")) {
+      patches.push(replace({ start: seg.start, end: seg.end }, app1));
+      placed = true;
+      continue;
+    }
+    patches.push(drop({ start: seg.start, end: seg.end }));
+  }
+
+  if (!placed) {
+    // Zero-length range at offset 2 = insert immediately after SOI.
+    patches.unshift(replace({ start: 2, end: 2 }, app1));
+  }
+
+  if (structure.trailer) patches.push(drop(structure.trailer));
+
+  patches.sort((a, b) => a.range.start - b.range.start);
+  return { kind: "patch", plan: planOf(patches) };
+}
+
 export const jpegHandler: FormatHandler = {
   id: "jpeg",
   label: "JPEG image",
   sniff: (head) => head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff,
   inspect,
   plan,
+  spoof,
 };
