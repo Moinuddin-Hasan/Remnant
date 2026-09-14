@@ -16,11 +16,13 @@
  *      ciphertext cannot be moved to a different id and still decrypt.
  */
 
+import { MAX_PLAINTEXT } from "./types";
+
 const PAD_BLOCK = 64 * 1024;
 const IV_BYTES = 12;
 const KEY_BITS = 256;
 
-export const MAX_PLAINTEXT = 25 * 1024 * 1024;
+export { MAX_PLAINTEXT };
 
 export interface EncryptedShare {
   readonly ciphertext: Uint8Array;
@@ -85,7 +87,7 @@ export async function encryptForShare(
   id: string,
 ): Promise<EncryptedShare> {
   if (file.size > MAX_PLAINTEXT) {
-    throw new Error(`File exceeds the ${MAX_PLAINTEXT / 1024 / 1024} MB share limit.`);
+    throw new Error(`File exceeds the ${Math.round(MAX_PLAINTEXT / 1024 / 1024)} MB share limit.`);
   }
 
   const header: Header = { name: filename, type: file.type || "application/octet-stream", size: file.size };

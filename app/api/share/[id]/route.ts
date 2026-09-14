@@ -1,35 +1,38 @@
 import { NextResponse } from "next/server";
+import { SHARE_ID } from "@/lib/share/id";
 import { shareStore } from "@/lib/share/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ID = /^[0-9a-f]{32}$/;
 
 const noStore = {
   "Cache-Control": "no-store, private",
   "X-Content-Type-Options": "nosniff",
 } as const;
 
+const gone = () =>
+  NextResponse.json(
+    { error: "This link has expired, been used, or been revoked." },
+    { status: 404, headers: noStore },
+  );
+
 /**
- * HEAD / GET report whether a link is still live WITHOUT consuming it.
+ * Reports whether a link is live WITHOUT consuming it.
  *
  * This is what makes the claim gate work. A link-preview crawler issues a GET
- * within seconds of the URL being pasted into a chat, and if that GET burned
- * the download the recipient would always find a dead link. Bytes are only
- * ever served from POST, which a crawler does not issue.
+ * within seconds of a URL being pasted into a chat; if that GET burned the
+ * share, the recipient would always find a dead link. Bytes come only from
+ * POST, which crawlers do not send.
  */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
-  if (!ID.test(id)) return NextResponse.json({ error: "Not found." }, { status: 404, headers: noStore });
+  if (!SHARE_ID.test(id)) return gone();
 
   const record = await shareStore().stat(id);
-  if (!record) {
-    return NextResponse.json({ error: "This link has expired or been used." }, { status: 404, headers: noStore });
-  }
+  if (!record) return gone();
 
   return NextResponse.json(
     { id: record.id, size: record.size, expiresAt: record.expiresAt, remaining: record.remaining },
@@ -40,22 +43,20 @@ export async function GET(
 /**
  * Consumes one claim and returns the ciphertext.
  *
- * Burn happens on CLAIM, not on bytes delivered. The server can never confirm
- * the client received the last byte — that is the Two Generals problem, not an
- * implementation gap — so the honest semantic is "this link can be claimed
- * once" rather than "read exactly once".
+ * The burn happens on CLAIM, not on bytes delivered. A server can never
+ * confirm the client received the final byte — that is the Two Generals
+ * problem, not an implementation gap — so the honest semantic is "this link
+ * can be claimed once", which is what the UI says.
  */
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
-  if (!ID.test(id)) return NextResponse.json({ error: "Not found." }, { status: 404, headers: noStore });
+  if (!SHARE_ID.test(id)) return gone();
 
   const claimed = await shareStore().claim(id);
-  if (!claimed) {
-    return NextResponse.json({ error: "This link has expired or been used." }, { status: 404, headers: noStore });
-  }
+  if (!claimed) return gone();
 
   return new NextResponse(claimed.ciphertext.slice().buffer as ArrayBuffer, {
     headers: {
@@ -65,4 +66,30 @@ export async function POST(
       "X-Remnant-Remaining": String(claimed.record.remaining),
     },
   });
+}
+
+/**
+ * Revocation from the creator's dashboard.
+ *
+ * Authorised by a token only the creator's browser holds; the server stores
+ * its SHA-256 and never the token itself. This is what lets you kill a link
+ * between one judge and the next without waiting for a TTL.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const { id } = await params;
+  if (!SHARE_ID.test(id)) return gone();
+
+  const token = request.headers.get("x-remnant-manage") ?? "";
+  if (!token) {
+    return NextResponse.json({ error: "Missing manage token." }, { status: 401, headers: noStore });
+  }
+
+  const ok = await shareStore().revoke(id, token);
+  if (!ok) {
+    return NextResponse.json({ error: "Not revocable." }, { status: 403, headers: noStore });
+  }
+  return NextResponse.json({ revoked: true }, { headers: noStore });
 }
