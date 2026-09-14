@@ -12,10 +12,24 @@
  * blob worker; if a dependency ever does, replace the dependency rather than
  * widening this policy.
  */
+const isProduction = process.env.NODE_ENV === "production";
+
+/**
+ * Development needs two things production must never have.
+ *
+ * React's development build calls `eval()` to reconstruct callstacks, and HMR
+ * needs a websocket. Sealing both in dev does not make the shipped product
+ * safer — it just stops the page hydrating, so nothing works and the seal goes
+ * untested where it matters. The production policy below is the real one, and
+ * the end-to-end check asserts it against a production build for exactly that
+ * reason.
+ */
 const BASE_CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
-  "worker-src 'self'",
+  isProduction
+    ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+  "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
@@ -26,8 +40,17 @@ const BASE_CSP = [
   "frame-ancestors 'none'",
 ];
 
-/** Inspect, clean and forge. Nothing here has any business touching the network. */
-const SEALED_CSP = [...BASE_CSP, "connect-src 'none'"].join("; ");
+/**
+ * Inspect, clean and forge. Nothing here has any business touching the network.
+ *
+ * In development the HMR socket is allowed, because without it the page does
+ * not reload and the tool is unusable to work on. The shipped policy is the
+ * sealed one.
+ */
+const SEALED_CSP = [
+  ...BASE_CSP,
+  isProduction ? "connect-src 'none'" : "connect-src 'self' ws: wss:",
+].join("; ");
 
 /**
  * Share routes, which need the network by definition.
@@ -39,7 +62,8 @@ const SEALED_CSP = [...BASE_CSP, "connect-src 'none'"].join("; ");
  */
 const SHARE_CSP = [
   ...BASE_CSP,
-  "connect-src 'self' https://*.public.blob.vercel-storage.com https://blob.vercel-storage.com",
+  "connect-src 'self' https://*.public.blob.vercel-storage.com https://blob.vercel-storage.com" +
+    (isProduction ? "" : " ws: wss:"),
 ].join("; ");
 
 /** @type {import('next').NextConfig} */

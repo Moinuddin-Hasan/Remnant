@@ -27,7 +27,7 @@ export default function Home() {
           and watch.
         </p>
         <div className="actions">
-          <Link href="/tool">
+          <Link href="/tool" prefetch={false}>
             <button className="primary">Inspect a file</button>
           </Link>
         </div>
@@ -44,7 +44,7 @@ export default function Home() {
           with the clock. The same rules run in reverse on a file somebody sent you.
         </p>
         <div className="actions">
-          <Link href="/forge">
+          <Link href="/forge" prefetch={false}>
             <button>Open forge</button>
           </Link>
         </div>
@@ -62,7 +62,7 @@ export default function Home() {
           them from your own device.
         </p>
         <div className="actions">
-          <Link href="/share">
+          <Link href="/share" prefetch={false}>
             <button>Open share</button>
           </Link>
         </div>

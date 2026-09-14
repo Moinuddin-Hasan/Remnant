@@ -15,6 +15,7 @@ import {
   type ShareConfig,
   type StorageUsage,
 } from "@/lib/share/client";
+import { cleanFile } from "@/lib/metadata/pipeline";
 
 type Liveness = Record<string, { live: boolean; remaining: number } | undefined>;
 
@@ -44,6 +45,8 @@ export default function Dashboard() {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [swept, setSwept] = useState<string | null>(null);
+  const [handedNote, setHandedNote] = useState<string | null>(null);
+  const [stripFirst, setStripFirst] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (list: readonly LocalShare[]) => {
@@ -64,6 +67,7 @@ export default function Dashboard() {
     void refresh(list);
     shareConfig().then(setConfig).catch(() => setConfig(null));
     refreshUsage();
+
   }, [refresh, refreshUsage]);
 
   const onSweep = useCallback(async () => {
@@ -88,7 +92,26 @@ export default function Dashboard() {
     setError(null);
     setProgress(0);
     try {
-      await createShare(file, file.name, {
+      // Cleaning happens here rather than on another route: the sealed pages
+      // cannot navigate without a full page load, which would drop the file.
+      // Doing it inline also means nobody can share a file they forgot to strip.
+      let payload: Blob = file;
+      const label = file.name;
+      if (stripFirst) {
+        setProgress(0.02);
+        try {
+          const cleaned = await cleanFile(file, file.name);
+          payload = cleaned.output;
+          setHandedNote(
+            cleaned.verify.ok
+              ? `stripped and verified · ${cleaned.verify.bytesBefore - cleaned.verify.bytesAfter} bytes removed`
+              : `partially cleaned · ${cleaned.verify.survived.length} item(s) remain`,
+          );
+        } catch {
+          setHandedNote("no strip path for this format — sharing it unchanged");
+        }
+      }
+      await createShare(payload, label, {
         ttlMs: ttlMins * 60_000,
         maxClaims: claims,
         passphrase: passphrase || undefined,
@@ -104,7 +127,7 @@ export default function Dashboard() {
     } finally {
       setBusy(false);
     }
-  }, [file, ttlMins, claims, passphrase, refresh]);
+  }, [file, ttlMins, claims, passphrase, refresh, stripFirst]);
 
   const onRevoke = useCallback(
     async (share: LocalShare) => {
@@ -139,9 +162,29 @@ export default function Dashboard() {
         <input
           ref={inputRef}
           type="file"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          style={{ marginBottom: 14 }}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setHandedNote(null);
+          }}
+          style={{ marginBottom: 8 }}
         />
+        {file && (
+          <p className="note" style={{ marginTop: 0, marginBottom: 14 }}>
+            <strong>{file.name}</strong> · {kb(file.size)}
+            {handedNote ? ` · ${handedNote}` : ""}
+          </p>
+        )}
+
+        <label
+          style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, fontSize: 13.5 }}
+        >
+          <input
+            type="checkbox"
+            checked={stripFirst}
+            onChange={(e) => setStripFirst(e.target.checked)}
+          />
+          Strip metadata before encrypting
+        </label>
 
         <div className="layers" style={{ marginBottom: 14 }}>
           <label className="layer">

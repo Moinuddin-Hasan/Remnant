@@ -35,13 +35,33 @@ const PRESETS: ReadonlyArray<{ label: string; profile: SpoofProfile }> = [
 
 const empty: SpoofProfile = {};
 
-export default function ForgeEngine() {
+/** Re-wraps a Blob as a File so the receiving tab has a name to work with. */
+const asFile = (blob: Blob, name: string, type?: string): File =>
+  new File([blob], name, { type: type ?? blob.type ?? "application/octet-stream" });
+
+interface ForgeProps {
+  readonly initial?: File | null;
+  readonly initialNote?: string | null;
+  readonly onHandOff?: (file: File, note: string) => void;
+}
+
+export default function ForgeEngine({ initial = null, initialNote = null, onHandOff }: ForgeProps) {
   const [file, setFile] = useState<File | null>(null);
   const [profile, setProfile] = useState<SpoofProfile>(PRESETS[0]!.profile);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ report: Report; lint: LintResult; url: string; name: string } | null>(null);
+  const [handedNote, setHandedNote] = useState<string | null>(initialNote);
   const url = useRef<string | null>(null);
+  const forged = useRef<Blob | null>(null);
+
+  // A file carried in from the Inspect tab.
+  useEffect(() => {
+    if (initial) {
+      setFile(initial);
+      setHandedNote(initialNote);
+    }
+  }, [initial, initialNote]);
 
   useEffect(
     () => () => {
@@ -62,6 +82,7 @@ export default function ForgeEngine() {
       if (url.current) URL.revokeObjectURL(url.current);
       const objectUrl = URL.createObjectURL(out.output);
       url.current = objectUrl;
+      forged.current = out.output;
       const dot = file.name.lastIndexOf(".");
       setResult({
         report: out.readBack,
@@ -103,7 +124,13 @@ export default function ForgeEngine() {
           <h2>Source file</h2>
           <span className="meta">JPEG</span>
         </div>
-        <input type="file" accept="image/jpeg" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        {file && (
+          <p className="note" style={{ marginBottom: 0 }}>
+            <strong>{file.name}</strong>
+            {handedNote ? ` · ${handedNote}` : ""}
+          </p>
+        )}
         <p className="note">
           Existing metadata and any embedded payload are removed before the new block is written.
           Leaving the original camera&apos;s tags beside a forged EXIF block is the first thing
@@ -143,9 +170,24 @@ export default function ForgeEngine() {
             {busy ? "Writing…" : "Write metadata"}
           </button>
           {result && (
-            <a href={result.url} download={result.name}>
-              <button>Download</button>
-            </a>
+            <>
+              <a href={result.url} download={result.name}>
+                <button>Download</button>
+              </a>
+              {onHandOff && (
+                <button
+                  onClick={() => {
+                    if (!forged.current) return;
+                    onHandOff(
+                      asFile(forged.current, result.name, "image/jpeg"),
+                      "Forged in the previous step.",
+                    );
+                  }}
+                >
+                  Check it in the inspector
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

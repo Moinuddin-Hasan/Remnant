@@ -1,6 +1,6 @@
 import dynamicImport from "next/dynamic";
 
-const ForgeEngine = dynamicImport(() => import("@/components/forge/ForgeEngine"), {
+const Workspace = dynamicImport(() => import("@/components/tool/Workspace"), {
   loading: () => <p className="sub">Loading the engine…</p>,
 });
 
@@ -13,7 +13,7 @@ export default function ForgePage() {
         Write a new identity onto a file, then see what it reads back as and where it
         contradicts itself. Runs entirely in this tab.
       </p>
-      <ForgeEngine />
+      <Workspace initial="forge" />
     </main>
   );
 }

@@ -18,7 +18,17 @@ interface AssetPreview {
 
 const kb = (n: number) => `${n.toLocaleString()} bytes`;
 
-export default function Engine() {
+/** Re-wraps a Blob as a File so the receiving tab has a name to work with. */
+const asFile = (blob: Blob, name: string, type?: string): File =>
+  new File([blob], name, { type: type ?? blob.type ?? "application/octet-stream" });
+
+interface EngineProps {
+  readonly initial?: File | null;
+  readonly initialNote?: string | null;
+  readonly onHandOff?: (file: File, note: string) => void;
+}
+
+export default function Engine({ initial = null, initialNote = null, onHandOff }: EngineProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -32,6 +42,7 @@ export default function Engine() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const urls = useRef<string[]>([]);
+  const cleanedBlob = useRef<Blob | null>(null);
 
   const releaseUrls = useCallback(() => {
     for (const u of urls.current) URL.revokeObjectURL(u);
@@ -89,6 +100,7 @@ export default function Engine() {
     try {
       const res = await clean(file);
       setVerify(res.verify);
+      cleanedBlob.current = res.output;
       setOutUrl(track(URL.createObjectURL(res.output)));
       const dot = file.name.lastIndexOf(".");
       setOutName(
@@ -105,6 +117,29 @@ export default function Engine() {
     const f = list?.[0];
     if (f) void onFile(f);
   };
+
+  /**
+   * Hands the cleaned file to the Forge tab.
+   *
+   * Same component tree, so the File object is passed by reference — no
+   * upload, no browser storage, no navigation. That last one matters: the
+   * sealed CSP blocks the RSC fetch the App Router uses for client-side
+   * navigation, so any route change here becomes a full page load and would
+   * discard the file entirely.
+   */
+  const handOff = useCallback(() => {
+    if (!cleanedBlob.current || !onHandOff) return;
+    onHandOff(
+      asFile(cleanedBlob.current, outName || file?.name || "cleaned", file?.type),
+      "Stripped and verified in the inspector.",
+    );
+  }, [outName, file, onHandOff]);
+
+  // A file carried in from the Forge tab.
+  useEffect(() => {
+    if (initial) void onFile(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
 
   return (
     <>
@@ -130,6 +165,7 @@ export default function Engine() {
       >
         <strong>{file ? file.name : "Drop a file, or click to choose one"}</strong>
         <span>
+          {initialNote && !file ? `${initialNote} ` : ""}
           {file
             ? `${kb(file.size)} · ${report?.formatLabel ?? "reading…"}`
             : "JPEG is fully supported. Anything else gets a raw byte scan and an honest answer."}
@@ -176,10 +212,14 @@ export default function Engine() {
                 <button>Download cleaned file</button>
               </a>
             )}
+            {cleanedBlob.current && outName && onHandOff && (
+              <button onClick={handOff}>Forge an identity onto it</button>
+            )}
             <button
               onClick={() => {
                 setFile(null);
                 setPhase("idle");
+                cleanedBlob.current = null;
                 reset();
               }}
             >

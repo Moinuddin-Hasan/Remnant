@@ -11,3 +11,4 @@ build/
 next-env.d.ts
 .share-data/
 .claude/
+.e2e/

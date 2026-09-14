@@ -1,12 +1,12 @@
-import dynamic from "next/dynamic";
+import dynamicImport from "next/dynamic";
 
 /**
- * The engine is the only importer of lib/metadata, loaded client-only.
- *
- * A static import anywhere in the shared tree would pull the parsers into a
- * chunk every visitor downloads, including people who never open the tool.
+ * The sealed workspace. Inspect, clean and forge all live in this one document
+ * because the route's CSP blocks the RSC fetch the App Router uses to navigate,
+ * so anything on another route would be a full page load away — and a file
+ * cannot survive that without being written somewhere it has no business being.
  */
-const Engine = dynamic(() => import("@/components/tool/Engine"), {
+const Workspace = dynamicImport(() => import("@/components/tool/Workspace"), {
   loading: () => <p className="sub">Loading the engine…</p>,
 });
 
@@ -15,10 +15,8 @@ export default function ToolPage() {
     <main className="wrap">
       <p className="eyebrow">Remnant</p>
       <h1>Inspect a file</h1>
-      <p className="sub">
-        Nothing is uploaded. Everything below happens in this tab.
-      </p>
-      <Engine />
+      <p className="sub">Nothing is uploaded. Everything below happens in this tab.</p>
+      <Workspace initial="inspect" />
     </main>
   );
 }
