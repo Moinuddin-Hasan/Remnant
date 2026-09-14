@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { shareStore, storageMode } from "@/lib/share/store";
+import { hostedConfigured, isServerless, shareStore, storageMode } from "@/lib/share/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +8,9 @@ const noStore = { "Cache-Control": "no-store" } as const;
 
 /** Current occupancy, for the dashboard's quota bar. */
 export async function GET(): Promise<NextResponse> {
+  if (isServerless() && !hostedConfigured()) {
+    return NextResponse.json({ count: 0, bytes: 0, quota: 0, mode: "unconfigured" }, { headers: noStore });
+  }
   try {
     const usage = await shareStore().usage();
     return NextResponse.json({ ...usage, mode: storageMode() }, { headers: noStore });

@@ -56,9 +56,14 @@ async function checkRedis() {
 
 async function checkBlob() {
   console.log("\nBlob");
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return bad("BLOB_READ_WRITE_TOKEN absent — the SDK cannot authenticate");
+  // Two valid credentials: a static read-write token, or OIDC (the platform
+  // injects VERCEL_OIDC_TOKEN and the project carries BLOB_STORE_ID).
+  const rw = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  const oidc = Boolean(process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN);
+  if (!rw && !oidc) {
+    return bad("no Blob credential — need BLOB_READ_WRITE_TOKEN, or BLOB_STORE_ID + VERCEL_OIDC_TOKEN");
   }
+  ok(`authenticating via ${rw ? "read-write token" : "OIDC"}`);
 
   const pathname = `shares/selftest-${Date.now()}.bin`;
   const payload = new Uint8Array([1, 2, 3, 4, 5]);

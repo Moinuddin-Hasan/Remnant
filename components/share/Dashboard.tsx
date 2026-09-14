@@ -225,10 +225,26 @@ export default function Dashboard() {
           )}
         </div>
 
+        {config && !config.ready && (
+          <div className="well" style={{ marginBottom: "var(--space-2)" }}>
+            <strong style={{ fontSize: 14 }}>Sharing is not configured on this deployment.</strong>
+            <p className="note" style={{ marginTop: 6 }}>
+              This host has a read-only filesystem, so hosted storage is required. Missing:{" "}
+              <code>{config.missing.join(", ")}</code>. Set them in the project&apos;s environment
+              variables and redeploy — variables only reach deployments created after they are
+              set. Inspect, clean and forge all still work; they never needed a server.
+            </p>
+          </div>
+        )}
+
         {error && <p className="err">{error}</p>}
 
         <div className="actions">
-          <button className="btn btn-primary" onClick={onCreate} disabled={!file || busy}>
+          <button
+            className="btn btn-primary"
+            onClick={onCreate}
+            disabled={!file || busy || (config ? !config.ready : false)}
+          >
             {busy ? `Encrypting… ${Math.round(progress * 100)}%` : "Encrypt and upload"}
           </button>
         </div>

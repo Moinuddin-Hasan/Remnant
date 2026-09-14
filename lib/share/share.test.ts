@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -289,6 +289,67 @@ describe("storage hygiene", () => {
     } finally {
       await rm(fresh, { recursive: true, force: true });
     }
+  });
+});
+
+describe("backend selection", () => {
+  const saved = { ...process.env };
+  const clear = () => {
+    for (const k of [
+      "VERCEL", "AWS_LAMBDA_FUNCTION_NAME",
+      "BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "VERCEL_OIDC_TOKEN",
+      "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN",
+    ]) delete process.env[k];
+  };
+
+  afterEach(() => {
+    clear();
+    Object.assign(process.env, saved);
+  });
+
+  it("accepts a static read-write token as a Blob credential", async () => {
+    clear();
+    const { blobConfigured } = await import("./store-hosted");
+    process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_test";
+    expect(blobConfigured()).toBe(true);
+  });
+
+  /**
+   * The regression. A store connected through the newer integration has no
+   * static token — it authenticates with OIDC. Treating that as unconfigured
+   * sent a live deployment down the filesystem path, which on a read-only
+   * serverless host fails as `mkdir '/var/task/.share-data'`.
+   */
+  it("accepts OIDC as a Blob credential", async () => {
+    clear();
+    const { blobConfigured } = await import("./store-hosted");
+    process.env.BLOB_STORE_ID = "store_abc123";
+    process.env.VERCEL_OIDC_TOKEN = "eyJhbGciOi.test";
+    expect(blobConfigured()).toBe(true);
+  });
+
+  it("rejects a half-configured OIDC pair", async () => {
+    clear();
+    const { blobConfigured } = await import("./store-hosted");
+    process.env.BLOB_STORE_ID = "store_abc123";
+    expect(blobConfigured()).toBe(false);
+  });
+
+  it("names every missing variable rather than failing vaguely", async () => {
+    clear();
+    const { missingHostedConfig } = await import("./store-hosted");
+    const missing = missingHostedConfig();
+    expect(missing).toContain("UPSTASH_REDIS_REST_URL");
+    expect(missing).toContain("UPSTASH_REDIS_REST_TOKEN");
+    expect(missing.some((m) => m.includes("BLOB"))).toBe(true);
+  });
+
+  it("detects a serverless host", async () => {
+    clear();
+    const { isServerless } = await import("./store");
+    expect(isServerless()).toBe(false);
+    process.env.VERCEL = "1";
+    expect(isServerless()).toBe(true);
   });
 });
 

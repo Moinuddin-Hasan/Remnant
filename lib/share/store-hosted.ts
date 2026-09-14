@@ -41,12 +41,38 @@ const countKey = (id: string) => `share:${id}:remaining`;
 
 let redis: Redis | null = null;
 
+/**
+ * Blob accepts two kinds of credential and we must accept both.
+ *
+ * A static `BLOB_READ_WRITE_TOKEN` is the classic form. A store connected
+ * through the newer integration instead authenticates with OIDC: the platform
+ * injects `VERCEL_OIDC_TOKEN` at runtime and the project carries
+ * `BLOB_STORE_ID`. Requiring only the static token made a perfectly working
+ * OIDC store look unconfigured, which is what sent a live deployment down the
+ * filesystem path and into `mkdir '/var/task/.share-data'`.
+ */
+export function blobConfigured(): boolean {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return true;
+  return Boolean(process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN);
+}
+
+export function redisConfigured(): boolean {
+  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
 export function hostedConfigured(): boolean {
-  return Boolean(
-    process.env.UPSTASH_REDIS_REST_URL &&
-      process.env.UPSTASH_REDIS_REST_TOKEN &&
-      process.env.BLOB_READ_WRITE_TOKEN,
-  );
+  return redisConfigured() && blobConfigured();
+}
+
+/** Names exactly what is missing, so a misconfiguration reads as one. */
+export function missingHostedConfig(): string[] {
+  const missing: string[] = [];
+  if (!process.env.UPSTASH_REDIS_REST_URL) missing.push("UPSTASH_REDIS_REST_URL");
+  if (!process.env.UPSTASH_REDIS_REST_TOKEN) missing.push("UPSTASH_REDIS_REST_TOKEN");
+  if (!blobConfigured()) {
+    missing.push("BLOB_READ_WRITE_TOKEN (or BLOB_STORE_ID + VERCEL_OIDC_TOKEN)");
+  }
+  return missing;
 }
 
 function client(): Redis {

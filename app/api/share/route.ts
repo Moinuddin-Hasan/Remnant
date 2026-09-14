@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { SHARE_ID } from "@/lib/share/id";
-import { shareStore, storageMode } from "@/lib/share/store";
+import {
+  hostedConfigured,
+  isServerless,
+  missingHostedConfig,
+  shareStore,
+  storageMode,
+} from "@/lib/share/store";
 import {
   DEFAULT_MAX_CLAIMS,
   DEFAULT_TTL_MS,
@@ -23,6 +29,10 @@ export async function GET(): Promise<NextResponse> {
   return NextResponse.json(
     {
       mode: storageMode(),
+      // A serverless host with no hosted storage cannot share at all; say so
+      // here so the page can explain itself rather than failing on upload.
+      ready: hostedConfigured() || !isServerless(),
+      missing: hostedConfigured() ? [] : missingHostedConfig(),
       maxBytes: MAX_CIPHERTEXT,
       passphraseRequired: Boolean(process.env.REMNANT_SHARE_PASSPHRASE),
       defaultTtlMs: DEFAULT_TTL_MS,

@@ -18,6 +18,9 @@ const LOCAL_KEY = "remnant.shares.v1";
 
 export interface ShareConfig {
   readonly mode: "hosted" | "local";
+  /** False when this deployment has no writable storage at all. */
+  readonly ready: boolean;
+  readonly missing: readonly string[];
   readonly maxBytes: number;
   readonly passphraseRequired: boolean;
   readonly defaultTtlMs: number;
