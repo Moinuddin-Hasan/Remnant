@@ -190,10 +190,18 @@ Pure data entry — no code, and it does not touch anything I am building.
 ]
 ```
 
-Roughly 40 entries: recent iPhones, Pixels, Samsung Galaxy S series, and a handful of Canon,
-Nikon, Sony and Fujifilm bodies. `model` must match the EXIF `Model` string exactly as the
-device writes it — check a real photo or an online EXIF sample rather than guessing, because a
-near-miss makes the rule silently never fire.
+**A 9-entry seed already exists** so the linter compiles — extend it, do not start over. It is
+still your file.
+
+Target roughly 40 entries: recent iPhones, Pixels, Samsung Galaxy S series, and a handful of
+Canon, Nikon, Sony and Fujifilm bodies. `model` must match the EXIF `Model` string exactly as
+the device writes it — check a real photo or an online EXIF sample rather than guessing,
+because a near-miss makes the rule silently never fire.
+
+⚠ **The EXIF string is often not the marketing name.** Samsung writes model codes like
+`SM-S918B`, not "Galaxy S23 Ultra"; Sony writes `ILCE-7M4`, not "A7 IV"; Nikon writes
+`NIKON Z 6` with a space and puts `NIKON CORPORATION` in Make. Getting this wrong is the main
+way this task fails silently.
 
 ⚠ The UI will say "checked against N known models", never "verified". Do not pad the list with
 guesses; a wrong release date produces a false accusation against a genuine photo, which is the

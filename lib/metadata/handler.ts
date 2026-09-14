@@ -6,9 +6,12 @@ export interface SpoofProfile {
   readonly make?: string;
   readonly model?: string;
   readonly dateTime?: string;
+  /** EXIF OffsetTimeOriginal, e.g. "+05:30". Checked against GPS longitude by the linter. */
+  readonly offsetTime?: string;
   readonly latitude?: number;
   readonly longitude?: number;
   readonly software?: string;
+  readonly artist?: string;
 }
 
 export interface FormatHandler {
