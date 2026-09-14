@@ -164,6 +164,31 @@ export async function shareStatus(
   return { live: true, remaining: body.remaining, expiresAt: body.expiresAt };
 }
 
+export interface StorageUsage {
+  readonly count: number;
+  readonly bytes: number;
+  readonly quota: number;
+  readonly mode: "hosted" | "local";
+}
+
+export async function storageUsage(): Promise<StorageUsage | null> {
+  const res = await fetch("/api/share/storage", { cache: "no-store" });
+  if (!res.ok) return null;
+  return (await res.json()) as StorageUsage;
+}
+
+/** Reclaims orphaned ciphertext — expired shares and abandoned uploads. */
+export async function sweepStorage(
+  passphrase?: string,
+): Promise<{ deleted: number; freed: number } | null> {
+  const res = await fetch("/api/share/storage", {
+    method: "POST",
+    headers: passphrase ? { "x-remnant-passphrase": passphrase } : {},
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as { deleted: number; freed: number };
+}
+
 export async function revokeShare(share: LocalShare): Promise<boolean> {
   const res = await fetch(`/api/share/${share.id}`, {
     method: "DELETE",

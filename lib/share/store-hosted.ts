@@ -1,11 +1,15 @@
-import { del, head } from "@vercel/blob";
+import { del, head, list } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
-import { hashToken } from "./id";
+import { hashToken, SHARE_ID } from "./id";
 import {
   MAX_CIPHERTEXT,
+  QUOTA_BYTES,
+  QUOTA_SOFT_LIMIT,
   type ShareRecord,
   type ShareStore,
 } from "./types";
+
+const PREFIX = "shares/";
 
 /**
  * Hosted backend: ciphertext in Vercel Blob, claim state in Upstash Redis.
@@ -86,6 +90,21 @@ export class HostedShareStore implements ShareStore {
     if (!blobUrl) throw new Error("Hosted shares require an uploaded blob URL.");
     if (size > MAX_CIPHERTEXT) throw new Error("Ciphertext exceeds the size cap.");
 
+    // Reclaim before refusing: most of what fills a small quota is orphans, not
+    // live shares, so a sweep usually makes room where a hard error would not.
+    const before = await this.usage();
+    if (before.bytes + size > QUOTA_SOFT_LIMIT) {
+      const swept = await this.sweep();
+      const after = await this.usage();
+      if (after.bytes + size > QUOTA_SOFT_LIMIT) {
+        throw new Error(
+          `Share storage is full — ${(after.bytes / 1048576).toFixed(0)} MB of ` +
+            `${(QUOTA_BYTES / 1048576).toFixed(0)} MB used, ${swept.deleted} orphan(s) reclaimed. ` +
+            `Revoke a link from your dashboard and try again.`,
+        );
+      }
+    }
+
     // The blob must already exist and match the declared size, or a client
     // could register a record pointing at somebody else's object.
     const info = await head(blobUrl).catch(() => null);
@@ -163,12 +182,92 @@ export class HostedShareStore implements ShareStore {
     return true;
   }
 
-  async destroy(id: string): Promise<void> {
+  /**
+   * Deletes the object and CONFIRMS it is gone.
+   *
+   * On a 256 MB quota a silently-failed delete is not a cosmetic problem — it
+   * is the thing that fills the store and takes sharing down mid-demo. `del`
+   * resolving is not evidence; `head` 404ing afterwards is.
+   */
+  async destroy(id: string): Promise<{ deleted: boolean; verified: boolean }> {
     const meta = await this.meta(id);
-    await Promise.allSettled([
-      client().del(metaKey(id)),
-      client().del(countKey(id)),
-      meta ? del(meta.blobUrl) : Promise.resolve(),
-    ]);
+    await Promise.allSettled([client().del(metaKey(id)), client().del(countKey(id))]);
+
+    if (!meta) return { deleted: false, verified: true };
+
+    try {
+      await del(meta.blobUrl);
+    } catch {
+      return { deleted: false, verified: false };
+    }
+
+    const still = await head(meta.blobUrl).catch(() => null);
+    return { deleted: true, verified: still === null };
+  }
+
+  /** What the store is actually holding, for the dashboard and the sweep. */
+  async usage(): Promise<{ count: number; bytes: number; quota: number }> {
+    let cursor: string | undefined;
+    let count = 0;
+    let bytes = 0;
+    do {
+      const page = await list({ prefix: PREFIX, cursor, limit: 1000 });
+      for (const b of page.blobs) {
+        count += 1;
+        bytes += b.size;
+      }
+      cursor = page.hasMore ? page.cursor : undefined;
+    } while (cursor);
+    return { count, bytes, quota: QUOTA_BYTES };
+  }
+
+  /**
+   * Deletes objects that nothing will ever reclaim.
+   *
+   * Two leaks make this necessary, and both fill a small quota quietly:
+   *
+   *   1. Redis meta carries a TTL, so an expired share's metadata disappears
+   *      on its own — taking with it the only pointer to its blob. Without a
+   *      sweep, every expired share leaves its ciphertext behind forever.
+   *   2. A browser that uploads and then closes the tab before registering
+   *      leaves an orphan that was never referenced at all.
+   *
+   * Blob is the source of truth here precisely because Redis forgets. Anything
+   * older than the grace period with no live metadata goes.
+   */
+  async sweep(graceMs = 15 * 60 * 1000): Promise<{ scanned: number; deleted: number; freed: number }> {
+    const now = Date.now();
+    let cursor: string | undefined;
+    let scanned = 0;
+    let deleted = 0;
+    let freed = 0;
+
+    do {
+      const page = await list({ prefix: PREFIX, cursor, limit: 1000 });
+      for (const blob of page.blobs) {
+        scanned += 1;
+        const age = now - new Date(blob.uploadedAt).getTime();
+        if (age < graceMs) continue; // too new to judge — may be mid-registration
+
+        const id = blob.pathname.replace(PREFIX, "").replace(/\.bin$/, "");
+        const meta = SHARE_ID.test(id) ? await this.meta(id) : null;
+        const live = meta !== null && now <= meta.expiresAt;
+        if (live) continue;
+
+        try {
+          await del(blob.url);
+          deleted += 1;
+          freed += blob.size;
+          if (SHARE_ID.test(id)) {
+            await Promise.allSettled([client().del(metaKey(id)), client().del(countKey(id))]);
+          }
+        } catch {
+          // Leave it for the next sweep rather than aborting the run.
+        }
+      }
+      cursor = page.hasMore ? page.cursor : undefined;
+    } while (cursor);
+
+    return { scanned, deleted, freed };
   }
 }

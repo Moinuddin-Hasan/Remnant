@@ -9,8 +9,11 @@ import {
   revokeShare,
   shareConfig,
   shareStatus,
+  storageUsage,
+  sweepStorage,
   type LocalShare,
   type ShareConfig,
+  type StorageUsage,
 } from "@/lib/share/client";
 
 type Liveness = Record<string, { live: boolean; remaining: number } | undefined>;
@@ -38,6 +41,9 @@ export default function Dashboard() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [swept, setSwept] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (list: readonly LocalShare[]) => {
@@ -47,13 +53,34 @@ export default function Dashboard() {
     setLive(Object.fromEntries(entries));
   }, []);
 
+  const refreshUsage = useCallback(() => {
+    storageUsage().then(setUsage).catch(() => setUsage(null));
+  }, []);
+
   useEffect(() => {
     forgetExpired();
     const list = listShares();
     setShares(list);
     void refresh(list);
     shareConfig().then(setConfig).catch(() => setConfig(null));
-  }, [refresh]);
+    refreshUsage();
+  }, [refresh, refreshUsage]);
+
+  const onSweep = useCallback(async () => {
+    setSweeping(true);
+    setSwept(null);
+    try {
+      const result = await sweepStorage(passphrase || undefined);
+      setSwept(
+        result
+          ? `reclaimed ${result.deleted} object(s), ${(result.freed / 1048576).toFixed(1)} MB`
+          : "sweep refused — check the passphrase",
+      );
+      refreshUsage();
+    } finally {
+      setSweeping(false);
+    }
+  }, [passphrase, refreshUsage]);
 
   const onCreate = useCallback(async () => {
     if (!file) return;
@@ -168,6 +195,46 @@ export default function Dashboard() {
           after the <code style={{ fontFamily: "var(--mono)" }}>#</code>, which browsers never
           send in a request — so the server stores ciphertext it has no key for.
         </p>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title">
+          <h2>Storage</h2>
+          <span className="meta">
+            {usage
+              ? `${(usage.bytes / 1048576).toFixed(1)} of ${(usage.quota / 1048576).toFixed(0)} MB · ${usage.count} object(s)`
+              : "…"}
+          </span>
+        </div>
+        {usage && (
+          <div
+            style={{
+              height: 8,
+              borderRadius: 4,
+              background: "var(--rule)",
+              overflow: "hidden",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, (usage.bytes / usage.quota) * 100)}%`,
+                height: "100%",
+                background: usage.bytes / usage.quota > 0.85 ? "var(--leak)" : "var(--okay)",
+              }}
+            />
+          </div>
+        )}
+        <p className="note" style={{ marginTop: 0 }}>
+          Expired shares and abandoned uploads leave ciphertext behind that nothing references.
+          Sweeping deletes them and confirms afterwards that the objects are actually gone.
+        </p>
+        <div className="actions">
+          <button onClick={onSweep} disabled={sweeping}>
+            {sweeping ? "Sweeping…" : "Reclaim orphaned files"}
+          </button>
+          {swept && <span className="meta">{swept}</span>}
+        </div>
       </div>
 
       <div className="panel">

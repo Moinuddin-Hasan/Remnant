@@ -1,7 +1,7 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { hashToken } from "./id";
-import { MAX_CIPHERTEXT, type ShareRecord, type ShareStore } from "./types";
+import { MAX_CIPHERTEXT, QUOTA_BYTES, type ShareRecord, type ShareStore } from "./types";
 
 /**
  * Filesystem backend: no accounts, no third-party service, no network.
@@ -128,10 +128,72 @@ export class FileShareStore implements ShareStore {
     return true;
   }
 
-  async destroy(id: string): Promise<void> {
+  async destroy(id: string): Promise<{ deleted: boolean; verified: boolean }> {
+    const existed = (await stat(this.blobPath(id)).catch(() => null)) !== null;
     await Promise.allSettled([
       rm(this.blobPath(id), { force: true }),
       rm(this.metaPath(id), { force: true }),
     ]);
+    const gone = (await stat(this.blobPath(id)).catch(() => null)) === null;
+    return { deleted: existed, verified: gone };
+  }
+
+  async usage(): Promise<{ count: number; bytes: number; quota: number }> {
+    let count = 0;
+    let bytes = 0;
+    try {
+      for (const name of await readdir(this.root)) {
+        if (!name.endsWith(".bin")) continue;
+        const info = await stat(path.join(this.root, name)).catch(() => null);
+        if (!info) continue;
+        count += 1;
+        bytes += info.size;
+      }
+    } catch {
+      // No directory yet means nothing stored.
+    }
+    return { count, bytes, quota: QUOTA_BYTES };
+  }
+
+  /**
+   * Reclaims ciphertext whose metadata is missing or expired.
+   *
+   * Less load-bearing than the hosted sweep — nothing here silently expires
+   * the way a Redis TTL does — but an abandoned upload still leaves a file
+   * behind, and self-hosters have finite disks too.
+   */
+  async sweep(graceMs = 15 * 60 * 1000): Promise<{ scanned: number; deleted: number; freed: number }> {
+    const now = Date.now();
+    let scanned = 0;
+    let deleted = 0;
+    let freed = 0;
+
+    let names: string[];
+    try {
+      names = await readdir(this.root);
+    } catch {
+      return { scanned, deleted, freed };
+    }
+
+    for (const name of names) {
+      if (!name.endsWith(".bin")) continue;
+      scanned += 1;
+      const id = name.replace(/\.bin$/, "");
+      const info = await stat(path.join(this.root, name)).catch(() => null);
+      if (!info) continue;
+      if (now - info.mtimeMs < graceMs) continue;
+
+      const meta = await this.readMeta(id);
+      if (meta && now <= meta.expiresAt && meta.remaining > 0) continue;
+
+      const size = info.size;
+      const result = await this.destroy(id);
+      if (result.verified) {
+        deleted += 1;
+        freed += size;
+      }
+    }
+
+    return { scanned, deleted, freed };
   }
 }
