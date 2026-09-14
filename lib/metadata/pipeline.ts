@@ -126,6 +126,17 @@ export async function cleanFile(
   return { output, verify, rebuilt, rebuildReason };
 }
 
+/**
+ * Whether this file has a write path, answerable before the user fills in a
+ * profile. ISOBMFF deliberately has none — writing `udta` resizes boxes and
+ * puts us back into the chunk-offset problem the strip avoids — so a HEIC
+ * straight off an iPhone must be refused clearly rather than silently.
+ */
+export async function canForge(file: Blob, filename: string): Promise<boolean> {
+  const handler = await handlerFor(file, filename);
+  return Boolean(handler.spoof);
+}
+
 export interface ForgeResult {
   readonly output: Blob;
   /** What the forged file actually reads back as — not what we asked for. */

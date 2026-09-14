@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { forgeFile } from "@/lib/metadata/pipeline";
+import { canForge, forgeFile } from "@/lib/metadata/pipeline";
 import type { SpoofProfile } from "@/lib/metadata/handler";
 import type { LintResult } from "@/lib/forge/lint";
 import type { Report } from "@/lib/metadata/types";
@@ -52,6 +52,7 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ report: Report; lint: LintResult; url: string; name: string } | null>(null);
   const [handedNote, setHandedNote] = useState<string | null>(initialNote);
+  const [writable, setWritable] = useState<boolean | null>(null);
   const url = useRef<string | null>(null);
   const forged = useRef<Blob | null>(null);
 
@@ -69,6 +70,28 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
     },
     [],
   );
+
+  /**
+   * Ask up front whether this format has a write path.
+   *
+   * An iPhone shoots HEIC by default, and HEIC has no writer — deliberately,
+   * because writing its metadata resizes boxes and breaks every item offset.
+   * Finding that out after filling in a profile and pressing the button is a
+   * bad way to learn it.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!file) {
+      setWritable(null);
+      return;
+    }
+    void canForge(file, file.name).then((ok) => {
+      if (!cancelled) setWritable(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
 
   const set = <K extends keyof SpoofProfile>(key: K, value: SpoofProfile[K]) =>
     setProfile((p) => ({ ...p, [key]: value }));
@@ -122,7 +145,7 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
       <div className="card">
         <div className="card-head">
           <h2 className="t-headline-md">Source file</h2>
-          <span className="meta">JPEG</span>
+          <span className="meta">JPEG · PNG · WebP</span>
         </div>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         {file && (
@@ -131,6 +154,18 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
             {handedNote ? ` · ${handedNote}` : ""}
           </p>
         )}
+        {writable === false && (
+          <div className="well" style={{ marginTop: "var(--space-2)" }}>
+            <strong style={{ fontSize: 14 }}>This format cannot be forged.</strong>
+            <p className="note" style={{ marginTop: 6 }}>
+              HEIC, AVIF and MP4 store metadata as sized boxes, so writing into one shifts every
+              offset after it and breaks the file. Rather than hand back something subtly
+              corrupt, we refuse. Convert to JPEG first, or use Inspect &amp; clean, which does
+              work on this format.
+            </p>
+          </div>
+        )}
+
         <p className="note">
           Existing metadata and any embedded payload are removed before the new block is written.
           Leaving the original camera&apos;s tags beside a forged EXIF block is the first thing
@@ -166,7 +201,7 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
         {error && <p className="err">{error}</p>}
 
         <div className="actions">
-          <button className="btn btn-primary" onClick={onForge} disabled={!file || busy}>
+          <button className="btn btn-primary" onClick={onForge} disabled={!file || busy || writable === false}>
             {busy ? "Writing…" : "Write metadata"}
           </button>
           {result && (

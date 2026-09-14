@@ -155,14 +155,47 @@ export const makeVsModel: Rule = ({ report, profile }) => {
  * A vendor MakerNote or vendor APP segment left behind from the original
  * camera while the claimed Make is somebody else's.
  */
-export const makeVsResidue: Rule = ({ report, profile }) => {
-  const make = (profile?.make ?? findingValue(report, "exif.Make") ?? "").toLowerCase();
-  if (!make) return null;
+const VENDORS = [
+  "apple", "samsung", "nikon", "canon", "sony", "google",
+  "fujifilm", "xiaomi", "olympus", "panasonic", "leica", "gopro",
+] as const;
 
-  const vendors = ["apple", "samsung", "nikon", "canon", "sony", "google", "fujifilm", "xiaomi"];
+/**
+ * Which vendor a Make string belongs to.
+ *
+ * Manufacturers do not write their own name plainly: Nikon writes
+ * "NIKON CORPORATION", Samsung writes lowercase "samsung", Sony writes "SONY".
+ * Comparing a Make against a vendor token with `===` therefore fails on the
+ * ones that matter, which is how every Nikon forgery ended up being accused of
+ * carrying Nikon data.
+ */
+const vendorOf = (s: string): string | null =>
+  VENDORS.find((v) => s.toLowerCase().includes(v)) ?? null;
+
+/** Fields the profile itself writes. Leftover data means anything BUT these. */
+const WRITTEN_BY_PROFILE = new Set([
+  "exif.Make",
+  "exif.Model",
+  "exif.Software",
+  "exif.Artist",
+  "exif.DateTimeOriginal",
+  "exif.CreateDate",
+  "exif.ModifyDate",
+  "exif.OffsetTimeOriginal",
+  "exif.gps",
+]);
+
+export const makeVsResidue: Rule = ({ report, profile }) => {
+  const make = profile?.make ?? findingValue(report, "exif.Make") ?? "";
+  const claimed = vendorOf(make);
+  if (!claimed) return null;
+
   const residue = report.findings.filter((f) => {
+    // The values we deliberately wrote are not residue — residue is what an
+    // earlier camera left behind.
+    if (WRITTEN_BY_PROFILE.has(f.id)) return false;
     const hay = `${f.label} ${f.value}`.toLowerCase();
-    return vendors.some((v) => v !== make && hay.includes(v));
+    return VENDORS.some((v) => v !== claimed && hay.includes(v));
   });
   if (residue.length === 0) return null;
 
