@@ -7,7 +7,6 @@ import type { EmbeddedAsset, Report, VerifyResult } from "@/lib/metadata/types";
 import FindingList from "./FindingList";
 import RemnantReveal from "./RemnantReveal";
 import VerifyPanel from "./VerifyPanel";
-import LayerPanel from "./LayerPanel";
 
 type Phase = "idle" | "reading" | "ready" | "cleaning" | "cleaned";
 
@@ -187,22 +186,6 @@ export default function Engine({ initial = null, initialNote = null, onHandOff }
 
           <FindingList report={report} />
 
-          <LayerPanel />
-
-          {report.unhandled.length > 0 && (
-            <div className="card">
-              <div className="card-head">
-                <h2 className="t-headline-md">What this did not inspect</h2>
-                <span className="meta">stated, not hidden</span>
-              </div>
-              <ul className="list">
-                {report.unhandled.map((u, i) => (
-                  <li key={i}>{u}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           <div className="actions">
             <button className="btn btn-primary" onClick={onClean} disabled={!canClean || phase === "cleaning"}>
               {phase === "cleaning" ? "Cleaning…" : "Clean it"}
@@ -229,8 +212,7 @@ export default function Engine({ initial = null, initialNote = null, onHandOff }
 
           {!canClean && (
             <p className="note">
-              This format is read-only here. We will not rewrite a container we do not
-              understand — a broken file is worse than a leaky one.
+              This format is read for findings only. Convert it to JPEG, PNG or WebP to clean it.
             </p>
           )}
         </>

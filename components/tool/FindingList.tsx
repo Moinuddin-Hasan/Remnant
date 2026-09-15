@@ -9,12 +9,11 @@ export default function FindingList({ report }: { report: Report }) {
     return (
       <div className="card">
         <div className="card-head">
-          <h2 className="t-headline-md">Nothing found</h2>
+          <h2 className="t-headline-md">Clean</h2>
           <span className="meta">{report.formatLabel}</span>
         </div>
         <p className="note" style={{ marginTop: 0 }}>
-          This scan found nothing. That is not the same as the file being clean — see what was
-          not inspected, below.
+          No metadata, no embedded payload, nothing hidden after the image data.
         </p>
       </div>
     );

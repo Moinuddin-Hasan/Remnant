@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import Nav from "@/components/Nav";
+import { ModeProvider } from "@/components/ModeProvider";
 import "./globals.css";
 
 /**
@@ -37,10 +38,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${jakarta.variable} ${plexMono.variable}`}>
       <body>
-        <div className="container">
+        <ModeProvider>
           <Nav />
-        </div>
-        {children}
+          {children}
+        </ModeProvider>
       </body>
     </html>
   );

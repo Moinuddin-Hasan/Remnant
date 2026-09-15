@@ -1,5 +1,4 @@
 import dynamicImport from "next/dynamic";
-import Tabs from "@/components/Tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +15,6 @@ export default function SharePage() {
         Encrypted in your browser, uploaded as ciphertext, opened with a key that only ever
         travels in the link.
       </p>
-      <Tabs active="share" />
       <Dashboard />
     </main>
   );

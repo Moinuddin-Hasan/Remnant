@@ -159,9 +159,8 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
             <strong style={{ fontSize: 14 }}>This format cannot be forged.</strong>
             <p className="note" style={{ marginTop: 6 }}>
               HEIC, AVIF and MP4 store metadata as sized boxes, so writing into one shifts every
-              offset after it and breaks the file. Rather than hand back something subtly
-              corrupt, we refuse. Convert to JPEG first, or use Inspect &amp; clean, which does
-              work on this format.
+              offset after it. Convert to JPEG, PNG or WebP to forge — or use Inspect, which
+              reads this format.
             </p>
           </div>
         )}
@@ -264,17 +263,6 @@ export default function ForgeEngine({ initial = null, initialNote = null, onHand
                 </div>
               </div>
             ))}
-
-            <p className="note">
-              This score measures whether the metadata agrees with itself. It says nothing about
-              whether the file would survive examination — the encoder fingerprint, compression
-              history and sensor noise all persist through any metadata edit:
-            </p>
-            <ul className="list">
-              {result.lint.outOfReach.map((o) => (
-                <li key={o}>{o}</li>
-              ))}
-            </ul>
           </div>
         </>
       )}

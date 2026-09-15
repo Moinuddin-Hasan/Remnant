@@ -55,7 +55,7 @@ export default function VerifyPanel({ verify }: { verify: VerifyResult }) {
             </div>
           )}
           <p className="note">
-            Something survived the strip, so this file is not clean and we will not say it is.
+            These items survived the strip and are still in the file.
           </p>
         </>
       )}
